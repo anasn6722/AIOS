@@ -1,0 +1,19 @@
+[project]
+name = "aios"
+version = "0.2.0"
+description = "AI-native desktop shell and protected system control foundation"
+requires-python = ">=3.12"
+dependencies = [
+  "PySide6>=6.8,<7",
+  "psutil>=6.0,<7",
+]
+
+[project.scripts]
+aios = "app:main"
+
+[tool.ruff]
+line-length = 100
+exclude = [".venv"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

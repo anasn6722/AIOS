@@ -1,0 +1,11 @@
+[app]
+name = "AIOS"
+version = "0.1.0"
+mode = "foundation"
+
+[ai]
+offline_first = true
+cloud_enabled = false
+
+[security]
+confirmation_for_medium_and_above = true
