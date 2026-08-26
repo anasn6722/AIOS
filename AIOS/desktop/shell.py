@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import platform
+from pathlib import Path
 from datetime import datetime
 
 import psutil
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
+    QInputDialog,
+    QListWidget,
+    QListWidgetItem,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -20,6 +26,8 @@ from PySide6.QtWidgets import (
 )
 
 from ai.orchestrator import Orchestrator
+from apps.launcher import AppLauncher
+from files.manager import FileManager
 
 
 class AiosShell(QMainWindow):
@@ -32,6 +40,8 @@ class AiosShell(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.orchestrator = Orchestrator()
+        self.file_manager = FileManager()
+        self.app_launcher = AppLauncher(self.orchestrator.system)
         self.setWindowTitle("AIOS — AI Native Desktop")
         self.resize(1440, 900)
         self.setMinimumSize(1100, 700)
@@ -133,7 +143,7 @@ class AiosShell(QMainWindow):
         layout.setSpacing(12)
 
         header = QHBoxLayout()
-        label = QLabel("CURRENT WORKSPACE")
+        label = QLabel("AIOS WORKSPACE")
         label.setObjectName("sectionTitle")
         header.addWidget(label)
         header.addStretch(1)
@@ -142,35 +152,43 @@ class AiosShell(QMainWindow):
         header.addWidget(self.workspace_status)
         layout.addLayout(header)
 
-        grid = QGridLayout()
-        grid.setSpacing(10)
-        cards = [
+        cards = QHBoxLayout()
+        cards.setSpacing(10)
+        for icon, title, desc, slot in [
             ("▦", "System Monitor", "Live CPU, RAM and platform status", self._system_status),
-            ("▤", "File Space", "Open and organize local files", self._open_home),
-            ("◇", "Command Center", "Talk to the AI system layer", self._focus_ai),
-            ("◌", "App Launcher", "Quick-launch everyday apps", self._open_apps),
-        ]
-        for index, (icon, title, desc, slot) in enumerate(cards):
+            ("▤", "File Manager", "Browse folders and search your files", self._open_file_manager),
+            ("◇", "AI Command Center", "Control AIOS using natural-language commands", self._focus_ai),
+            ("◫", "Application Launcher", "Discover and launch installed apps", self._open_apps),
+        ]:
             card = QFrame()
             card.setObjectName("card")
             card_layout = QVBoxLayout(card)
             card_layout.setContentsMargins(16, 14, 16, 14)
-            icon_label = QLabel(icon)
-            icon_label.setObjectName("cardIcon")
-            title_label = QLabel(title)
-            title_label.setObjectName("cardTitle")
-            desc_label = QLabel(desc)
-            desc_label.setObjectName("cardDesc")
-            desc_label.setWordWrap(True)
-            action = QPushButton("Open")
-            action.setObjectName("cardButton")
-            action.clicked.connect(slot)
-            card_layout.addWidget(icon_label)
-            card_layout.addWidget(title_label)
-            card_layout.addWidget(desc_label, 1)
-            card_layout.addWidget(action, 0, Qt.AlignmentFlag.AlignLeft)
-            grid.addWidget(card, index // 2, index % 2)
-        layout.addLayout(grid)
+            icon_label = QLabel(icon); icon_label.setObjectName("cardIcon")
+            title_label = QLabel(title); title_label.setObjectName("cardTitle")
+            desc_label = QLabel(desc); desc_label.setObjectName("cardDesc"); desc_label.setWordWrap(True)
+            action = QPushButton("Open"); action.setObjectName("cardButton"); action.clicked.connect(slot)
+            card_layout.addWidget(icon_label); card_layout.addWidget(title_label); card_layout.addWidget(desc_label, 1); card_layout.addWidget(action, 0, Qt.AlignmentFlag.AlignLeft)
+            cards.addWidget(card, 1)
+        layout.addLayout(cards)
+
+        self.file_view = QFrame()
+        self.file_view.setObjectName("embeddedPanel")
+        file_layout = QVBoxLayout(self.file_view)
+        file_layout.setContentsMargins(12, 12, 12, 12)
+        file_header = QHBoxLayout()
+        self.path_label = QLabel(str(self.file_manager.list_dir(Path.home())[0].path.parent if self.file_manager.list_dir(Path.home()) else Path.home()))
+        self.path_label.setObjectName("pathLabel")
+        up = QPushButton("Up"); up.setObjectName("miniButton"); up.clicked.connect(self._file_up)
+        refresh = QPushButton("Refresh"); refresh.setObjectName("miniButton"); refresh.clicked.connect(self._refresh_files)
+        search = QPushButton("Search"); search.setObjectName("miniButton"); search.clicked.connect(self._search_files)
+        file_header.addWidget(self.path_label, 1); file_header.addWidget(up); file_header.addWidget(refresh); file_header.addWidget(search)
+        file_layout.addLayout(file_header)
+        self.file_list = QListWidget(); self.file_list.setObjectName("fileList"); self.file_list.itemDoubleClicked.connect(self._file_double_click)
+        file_layout.addWidget(self.file_list, 1)
+        self.current_directory = Path.home()
+        self._refresh_files()
+        layout.addWidget(self.file_view, 1)
         return panel
 
     def _make_ai_bar(self) -> QFrame:
@@ -281,12 +299,80 @@ class AiosShell(QMainWindow):
         self.run_command()
 
     def _open_home(self) -> None:
-        self.command.setText("open .")
+        self._open_file_manager()
+
+    def _open_file_manager(self) -> None:
+        self.current_directory = Path.home()
+        self._refresh_files()
+        self.workspace_status.setText("FILE MANAGER")
+        self.file_list.setFocus()
+
+    def _refresh_files(self) -> None:
+        self.file_list.clear()
+        self.path_label.setText(str(self.current_directory))
+        try:
+            entries = self.file_manager.list_dir(self.current_directory)
+        except (FileNotFoundError, PermissionError) as exc:
+            self.output.setText(f"⚠ {exc}")
+            return
+        for entry in entries[:250]:
+            prefix = "📁" if entry.is_dir else "📄"
+            item = QListWidgetItem(f"{prefix}  {entry.name}")
+            item.setData(Qt.ItemDataRole.UserRole, str(entry.path))
+            self.file_list.addItem(item)
+
+    def _file_double_click(self, item: QListWidgetItem) -> None:
+        path = Path(item.data(Qt.ItemDataRole.UserRole))
+        if path.is_dir():
+            self.current_directory = path
+            self._refresh_files()
+            return
+        self.command.setText(f'open "{path}"')
         self.run_command()
 
+    def _file_up(self) -> None:
+        parent = self.current_directory.parent
+        if parent != self.current_directory:
+            self.current_directory = parent
+            self._refresh_files()
+
+    def _search_files(self) -> None:
+        query, accepted = QInputDialog.getText(self, "AIOS File Search", "Find files containing:")
+        if not accepted or not query.strip():
+            return
+        try:
+            results = self.file_manager.search(Path.home(), query.strip(), limit=100)
+        except FileNotFoundError as exc:
+            self.output.setText(f"⚠ {exc}")
+            return
+        self.file_list.clear()
+        for entry in results:
+            prefix = "📁" if entry.is_dir else "📄"
+            item = QListWidgetItem(f"{prefix}  {entry.name}   —   {entry.path}")
+            item.setData(Qt.ItemDataRole.UserRole, str(entry.path))
+            self.file_list.addItem(item)
+        self.output.setText(f"✓ Found {len(results)} matching items.")
+        self.workspace_status.setText("SEARCH RESULTS")
+
     def _open_apps(self) -> None:
-        self.output.setText("Try: open chrome, open notepad, open calculator, open terminal, or open task manager.")
+        apps = self.app_launcher.discover()
+        self.file_list.clear()
+        self.path_label.setText("Applications")
+        for app in apps:
+            item = QListWidgetItem(f"◫  {app.name}")
+            item.setToolTip(app.executable)
+            item.setData(Qt.ItemDataRole.UserRole, app.name)
+            self.file_list.addItem(item)
+        self.file_list.itemDoubleClicked.disconnect(self._file_double_click)
+        self.file_list.itemDoubleClicked.connect(self._launch_selected_app)
+        self.output.setText(f"✓ {len(apps)} applications discovered. Double-click an app to launch it.")
         self.workspace_status.setText("APP LAUNCHER")
+
+    def _launch_selected_app(self, item: QListWidgetItem) -> None:
+        name = str(item.data(Qt.ItemDataRole.UserRole))
+        ok, message = self.app_launcher.launch(name)
+        self.output.setText(("✓ " if ok else "⚠ ") + message)
+
 
     def _focus_ai(self) -> None:
         self.command.setFocus()

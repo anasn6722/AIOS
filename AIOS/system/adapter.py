@@ -10,10 +10,16 @@ from pathlib import Path
 import psutil
 
 from core.actions import ActionRequest, ActionResult
+from files.manager import FileManager
+from apps.launcher import AppLauncher
 
 
 class SystemAdapter:
     """Explicit Windows/system adapter. AI never calls OS APIs directly."""
+
+    def __init__(self) -> None:
+        self.file_manager = FileManager()
+        self.app_launcher = AppLauncher(self)
 
     APP_ALIASES = {
         "notepad": ["notepad.exe"],
@@ -78,6 +84,8 @@ class SystemAdapter:
             "lock_computer": self.lock_computer,
             "shutdown": self.shutdown,
             "restart": self.restart,
+            "list_apps": self.list_apps,
+            "search_files": self.search_files,
         }
         handler = handlers.get(request.name)
         if handler is None:
@@ -186,6 +194,20 @@ class SystemAdapter:
                 return ActionResult(False, f"Could not launch {app}: {exc}")
 
         return ActionResult(False, f"Could not find application: {app}")
+
+
+    def list_apps(self, request: ActionRequest) -> ActionResult:
+        apps = [entry.__dict__ for entry in self.app_launcher.discover()]
+        return ActionResult(True, f"Found {len(apps)} launchable apps.", {"apps": apps})
+
+    def search_files(self, request: ActionRequest) -> ActionResult:
+        query = str(request.parameters.get("query", "")).strip()
+        root = str(request.parameters.get("root", str(Path.home())))
+        if not query:
+            return ActionResult(False, "Search query is empty.")
+        results = self.file_manager.search(root, query, limit=40)
+        data = [{"name": item.name, "path": str(item.path), "is_dir": item.is_dir, "size": item.size} for item in results]
+        return ActionResult(True, f"Found {len(data)} matching items.", {"results": data})
 
     def show_desktop(self, request: ActionRequest) -> ActionResult:
         if os.name != "nt":

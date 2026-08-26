@@ -1,43 +1,58 @@
-# AIOS
+# AIOS — AI-Native Operating Environment
 
-AI-native desktop environment prototype — **v0.3.0**.
+## v0.4.0 — Application Launcher + File Manager
 
-AIOS is a separate project from JARVIS OFFLINE. JARVIS remains an independent portfolio project.
+AIOS is a separate project from JARVIS OFFLINE. JARVIS remains an independent resume/portfolio project.
 
-## v0.3
+### Current capabilities
+- AIOS desktop shell
+- Protected AI command orchestration
+- Windows application discovery and launching
+- Application launcher panel
+- File manager panel with folders and files
+- Browse into directories and move up
+- File search from the home directory
+- Open files with the native OS handler
+- Live CPU / RAM / clock status
+- Confirmation gates for lock, shutdown, and restart
 
-The desktop shell can now perform controlled Windows actions through:
+### Architecture
 
-`Command -> Orchestrator -> PolicyEngine -> SystemAdapter -> Windows`
+```text
+Manual UI / AI command
+        ↓
+Orchestrator
+        ↓
+Policy Engine
+        ↓
+System Adapter
+   ┌────┴───────────┐
+   │                │
+App Launcher    File Manager
+   │                │
+Windows Apps     Local Files
+```
 
-Supported examples:
-
-- `system status`
-- `open chrome`
-- `open notepad`
-- `open calculator`
-- `open terminal`
-- `open task manager`
-- `open .`
-- `open C:\Users`
-- `show desktop`
-- `lock computer` (confirmation)
-- `restart` (confirmation)
-- `shutdown` (confirmation)
-
-## Run
+### Run on Windows
 
 ```powershell
-python -m venv .venv
+cd C:\Users\<your-user>\Desktop\AIOS\AIOS
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 python app.py
 ```
 
-## Safety
+### Example AI commands
 
-High-risk and critical actions are blocked until explicitly confirmed. The AI layer is not allowed to call Windows APIs directly.
+- `system status`
+- `open notepad`
+- `open chrome`
+- `open downloads`
+- `open file manager`
+- `open apps`
+- `find pdf`
+- `show desktop`
 
+### Safety
 
-## v0.3.2
-Application command parsing now prioritizes known Windows app aliases before filesystem path checks.
+The AI layer does not directly call Windows APIs. System actions go through the orchestrator and policy engine. High-risk operations require confirmation.
