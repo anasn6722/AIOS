@@ -1,35 +1,39 @@
 # AIOS
 
-AIOS is a separate experimental AI-native operating environment project.
+AI-native desktop environment prototype — **v0.3.0**.
 
-## Goals
-- Manual desktop control remains first-class.
-- Natural-language AI control uses the same protected action layer.
-- Local/offline-first architecture with optional online AI later.
-- Explicit permissions for destructive or privileged actions.
-- Gradual path from Windows-hosted shell to a deeper OS platform.
+AIOS is a separate project from JARVIS OFFLINE. JARVIS remains an independent portfolio project.
 
-## Current milestone: Foundation
-This starter establishes:
-- project boundaries
-- an action model
-- a permission policy layer
-- a basic orchestrator
-- a Windows system adapter
-- a minimal Qt desktop shell
+## v0.3
 
-JARVIS OFFLINE is intentionally not part of this repository.
+The desktop shell can now perform controlled Windows actions through:
 
+`Command -> Orchestrator -> PolicyEngine -> SystemAdapter -> Windows`
 
-## v0.2.0 — Desktop Shell
+Supported examples:
 
-The first AIOS desktop shell adds:
+- `system status`
+- `open chrome`
+- `open notepad`
+- `open calculator`
+- `open terminal`
+- `open task manager`
+- `open .`
+- `open C:\Users`
+- `show desktop`
+- `lock computer` (confirmation)
+- `restart` (confirmation)
+- `shutdown` (confirmation)
 
-- AIOS workspace desktop layout
-- Navigation panel and taskbar
-- Live CPU/RAM/time status
-- AI command bar
-- Protected orchestrator → policy → system execution path
-- Workspace cards for system monitoring, files, AI command center, and app launcher
+## Run
 
-This remains a normal Windows application while AIOS evolves toward a full operating environment.
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python app.py
+```
+
+## Safety
+
+High-risk and critical actions are blocked until explicitly confirmed. The AI layer is not allowed to call Windows APIs directly.

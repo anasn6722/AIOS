@@ -1,7 +1,7 @@
 [project]
 name = "aios"
-version = "0.1.0"
-description = "AI-native operating environment foundation"
+version = "0.2.0"
+description = "AI-native desktop shell and protected system control foundation"
 requires-python = ">=3.12"
 dependencies = [
   "PySide6>=6.8,<7",

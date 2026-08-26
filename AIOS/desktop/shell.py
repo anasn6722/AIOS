@@ -50,7 +50,7 @@ class AiosShell(QMainWindow):
         top = QHBoxLayout()
         brand = QLabel("AIOS")
         brand.setObjectName("brand")
-        version = QLabel("AI-NATIVE DESKTOP  •  v0.2")
+        version = QLabel("AI-NATIVE DESKTOP  •  v0.3")
         version.setObjectName("eyebrow")
         top.addWidget(brand)
         top.addSpacing(12)
@@ -194,6 +194,12 @@ class AiosShell(QMainWindow):
         button.clicked.connect(self.run_command)
         layout.addWidget(button)
 
+        self.confirm_button = QPushButton("Confirm")
+        self.confirm_button.setObjectName("confirmButton")
+        self.confirm_button.clicked.connect(self.confirm_command)
+        self.confirm_button.setVisible(False)
+        layout.addWidget(self.confirm_button)
+
         self.output = QLabel("AIOS ready. AI actions are gated by the policy engine.")
         self.output.setObjectName("output")
         self.output.setWordWrap(True)
@@ -242,6 +248,13 @@ class AiosShell(QMainWindow):
         if not text:
             return
         result = self.orchestrator.handle(text)
+        if result.data.get("requires_confirmation"):
+            action = result.data.get("action", "this action")
+            self.output.setText(f"⚠ Confirmation required: {action}. Run the command again using the confirmation button.")
+            self.workspace_status.setText("CONFIRMATION REQUIRED")
+            self.confirm_button.setVisible(True)
+            self.confirm_button.setProperty("command_text", text)
+            return
         if result.ok:
             details = ""
             if result.data:
@@ -253,6 +266,16 @@ class AiosShell(QMainWindow):
             self.workspace_status.setText("ACTION BLOCKED")
         self.command.clear()
 
+    def confirm_command(self) -> None:
+        text = self.confirm_button.property("command_text")
+        if not text:
+            return
+        result = self.orchestrator.handle(str(text), confirmed=True)
+        self.confirm_button.setVisible(False)
+        self.command.clear()
+        self.output.setText(("✓ " if result.ok else "⚠ ") + result.message)
+        self.workspace_status.setText("ACTION COMPLETE" if result.ok else "ACTION BLOCKED")
+
     def _system_status(self) -> None:
         self.command.setText("system status")
         self.run_command()
@@ -262,7 +285,7 @@ class AiosShell(QMainWindow):
         self.run_command()
 
     def _open_apps(self) -> None:
-        self.output.setText("App launcher is the next expansion point for v0.3.")
+        self.output.setText("Try: open chrome, open notepad, open calculator, open terminal, or open task manager.")
         self.workspace_status.setText("APP LAUNCHER")
 
     def _focus_ai(self) -> None:
@@ -338,6 +361,14 @@ class AiosShell(QMainWindow):
                 selection-background-color: #1d4d73;
             }
             QLineEdit:focus { border: 1px solid #48b8ff; }
+            #confirmButton {
+                background: #6f5a19;
+                border: 1px solid #a18424;
+                border-radius: 9px;
+                padding: 10px 14px;
+                color: #ffffff;
+                font-weight: 700;
+            }
             #runButton {
                 background: #1594d4;
                 border: 0;

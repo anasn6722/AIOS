@@ -1,22 +1,40 @@
-# AIOS Foundation Architecture
+# AIOS Architecture
+
+## v0.3 Native Control
 
 ```text
-Manual UI ───────┐
-                 ├──> Action Layer ──> Policy ──> OS Adapters ──> Windows
-AI Intent ───────┘
+Manual UI / AI command
+          |
+          v
+     Orchestrator
+          |
+          v
+     ActionRequest
+          |
+          v
+     PolicyEngine
+          |
+    +-----+-----+
+    |           |
+   allow     confirm
+    |           |
+    +-----+-----+
+          |
+          v
+    SystemAdapter
+          |
+          v
+   Windows / OS APIs
 ```
 
-The key rule is that AI never receives unrestricted operating-system access.
-AI requests structured actions. The policy layer decides whether they can execute.
+The LLM layer must never receive unrestricted OS access. Future LLM planners produce structured `ActionRequest` objects that are still checked by the policy engine.
 
-## Next layers
-1. Local AI model adapter
-2. Voice input
-3. Vision and screen understanding
-4. File intelligence
-5. Application automation
-6. AI workspace manager
-7. Multi-agent orchestration
-8. Deep Windows integration
-9. Installer and background services
-10. Future bootable/custom OS research
+### v0.3 supported actions
+
+- System status
+- Open files/folders
+- Launch common Windows applications
+- Show desktop
+- Lock computer (confirmation required)
+- Restart computer (confirmation required)
+- Shutdown computer (confirmation required)
