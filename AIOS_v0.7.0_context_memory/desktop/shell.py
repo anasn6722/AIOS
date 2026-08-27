@@ -268,82 +268,6 @@ class AiosShell(QMainWindow):
 
         normalized = " ".join(text.lower().split())
 
-        # v0.7.2: context queries are read-only and are handled directly by
-        # the ContextEngine. This avoids coupling UI context features to the
-        # general AI intent parser and guarantees these commands stay usable.
-        if normalized in {
-            "what app am i using",
-            "what window am i using",
-            "what window is active",
-            "show current window",
-        }:
-            self.orchestrator.context.record_command(text)
-            data = self.orchestrator.context.snapshot().get("active_window", {})
-            title = data.get("title") or "No foreground window detected"
-            process = data.get("process") or "Unknown process"
-            pid = data.get("pid")
-            pid_text = f"PID {pid}" if pid else "PID unknown"
-            self.file_list.clear()
-            self.path_label.setText("Active Application")
-            self.file_list.addItem(QListWidgetItem(f"Window: {title}"))
-            self.file_list.addItem(QListWidgetItem(f"Application: {process}"))
-            self.file_list.addItem(QListWidgetItem(pid_text))
-            self.output.setText(f"✓ You are using: {process}\nWindow: {title}\n{pid_text}")
-            self.workspace_status.setText("ACTIVE APP")
-            self.command.clear()
-            return
-
-        if normalized in {
-            "show my context",
-            "show current context",
-            "what is my current context",
-            "what's my current context",
-        }:
-            self.orchestrator.context.record_command(text)
-            data = self.orchestrator.context.snapshot()
-            active = data.get("active_window") or {}
-            lines = [
-                f"User: {data.get('user', 'Unknown')}",
-                f"Home: {data.get('home', '')}",
-                f"Directory: {data.get('current_directory', '')}",
-                f"Platform: {data.get('platform', '')}",
-                f"CPU: {data.get('cpu_percent', '?')}%",
-                f"RAM: {data.get('ram_percent', '?')}%",
-                f"Disk: {data.get('disk_percent', '?')}%",
-                f"Active app: {active.get('process') or 'Unknown'}",
-                f"Active window: {active.get('title') or 'Unknown'}",
-            ]
-            self.file_list.clear()
-            self.path_label.setText("Current Context")
-            for line in lines:
-                self.file_list.addItem(QListWidgetItem(line))
-            self.output.setText("✓ Current computer context collected (read-only).")
-            self.workspace_status.setText("CONTEXT")
-            self.command.clear()
-            return
-
-        if normalized in {
-            "show recent commands",
-            "recent commands",
-            "what did i just do",
-            "show command history",
-        }:
-            # Snapshot AFTER recording this request, so history reflects what
-            # the user just asked AIOS to do.
-            self.orchestrator.context.record_command(text)
-            commands = self.orchestrator.context.snapshot().get("recent_commands", [])
-            self.file_list.clear()
-            self.path_label.setText("Recent AIOS Commands")
-            if commands:
-                for index, command in enumerate(commands[-20:], 1):
-                    self.file_list.addItem(QListWidgetItem(f"{index}.  {command}"))
-            else:
-                self.file_list.addItem(QListWidgetItem("No recent commands yet."))
-            self.output.setText(f"✓ {len(commands)} recent AIOS command(s) stored locally.")
-            self.workspace_status.setText("COMMAND HISTORY")
-            self.command.clear()
-            return
-
         # v0.6 object-model intents: show structured OS information in the shell.
         if normalized in {"what apps are running", "which apps are running", "show running apps", "show running applications", "what is running"}:
             result = self.orchestrator.handle(text)
@@ -372,6 +296,8 @@ class AiosShell(QMainWindow):
             self.command.clear()
             return
 
+        # UI-native v0.4 intents: route these into AIOS panels rather than
+        # treating them as external Windows paths/commands.
         if normalized in {"open apps", "show apps", "app launcher", "open app launcher"}:
             self._open_apps()
             self.output.setText("✓ Application Launcher opened.")
