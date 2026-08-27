@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QScrollArea,
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
@@ -42,9 +43,9 @@ class AiosShell(QMainWindow):
         self.orchestrator = Orchestrator()
         self.file_manager = FileManager()
         self.app_launcher = AppLauncher(self.orchestrator.system)
-        self.setWindowTitle("AIOS — AI Native Desktop")
-        self.resize(1440, 900)
-        self.setMinimumSize(1100, 700)
+        self.setWindowTitle("AIOS — AI-Native Desktop")
+        self.resize(1520, 940)
+        self.setMinimumSize(1180, 760)
         self._build_ui()
         self._start_system_timer()
 
@@ -54,47 +55,67 @@ class AiosShell(QMainWindow):
         self.setCentralWidget(root)
 
         outer = QVBoxLayout(root)
-        outer.setContentsMargins(18, 18, 18, 12)
-        outer.setSpacing(12)
+        outer.setContentsMargins(14, 14, 14, 10)
+        outer.setSpacing(10)
 
         top = QHBoxLayout()
+        top.setSpacing(10)
         brand = QLabel("AIOS")
         brand.setObjectName("brand")
-        version = QLabel("AI-NATIVE DESKTOP  •  v0.7")
+        version = QLabel("AI-NATIVE OPERATING ENVIRONMENT  •  v0.8")
         version.setObjectName("eyebrow")
-        top.addWidget(brand)
-        top.addSpacing(12)
-        top.addWidget(version)
+        top.addWidget(brand, 0)
+        top.addWidget(version, 0)
         top.addStretch(1)
         self.clock = QLabel()
         self.clock.setObjectName("clock")
-        top.addWidget(self.clock)
+        top.addWidget(self.clock, 0)
         outer.addLayout(top)
 
         content = QHBoxLayout()
-        content.setSpacing(14)
+        content.setSpacing(10)
+        content.setContentsMargins(0, 0, 0, 0)
 
         sidebar = self._make_sidebar()
-        content.addWidget(sidebar)
+        content.addWidget(sidebar, 0)
 
-        main = QVBoxLayout()
-        main.setSpacing(14)
-        main.addWidget(self._make_hero())
-        main.addWidget(self._make_workspace(), 1)
-        main.addWidget(self._make_ai_bar())
-        content.addLayout(main, 1)
+        main_column = QVBoxLayout()
+        main_column.setSpacing(10)
+
+        # The central workspace scrolls vertically on smaller screens so that
+        # no cards or panels are clipped. The AI command bar and taskbar remain
+        # anchored and always accessible.
+        workspace_scroll = QScrollArea()
+        workspace_scroll.setObjectName("workspaceScroll")
+        workspace_scroll.setWidgetResizable(True)
+        workspace_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        workspace_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        workspace_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+        workspace_container = QWidget()
+        workspace_layout = QVBoxLayout(workspace_container)
+        workspace_layout.setContentsMargins(0, 0, 4, 0)
+        workspace_layout.setSpacing(10)
+        workspace_layout.addWidget(self._make_hero(), 0)
+        workspace_layout.addWidget(self._make_workspace(), 1)
+        workspace_scroll.setWidget(workspace_container)
+        main_column.addWidget(workspace_scroll, 1)
+        main_column.addWidget(self._make_ai_bar(), 0)
+
+        content.addLayout(main_column, 1)
         outer.addLayout(content, 1)
+        outer.addWidget(self._make_taskbar(), 0)
 
-        outer.addWidget(self._make_taskbar())
         root.setStyleSheet(self._stylesheet())
 
     def _make_sidebar(self) -> QFrame:
         panel = QFrame()
         panel.setObjectName("sidebar")
-        panel.setFixedWidth(190)
+        panel.setMinimumWidth(160)
+        panel.setMaximumWidth(190)
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(12, 16, 12, 16)
-        layout.setSpacing(8)
+        layout.setContentsMargins(10, 12, 10, 12)
+        layout.setSpacing(6)
 
         title = QLabel("WORKSPACES")
         title.setObjectName("sectionTitle")
@@ -115,24 +136,47 @@ class AiosShell(QMainWindow):
     def _make_hero(self) -> QFrame:
         frame = QFrame()
         frame.setObjectName("hero")
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(24, 22, 24, 22)
-        layout.setSpacing(8)
+        layout = QHBoxLayout(frame)
+        layout.setContentsMargins(28, 24, 24, 24)
+        layout.setSpacing(24)
 
-        greeting = QLabel("SYSTEM ONLINE")
+        left = QVBoxLayout()
+        left.setSpacing(8)
+        greeting = QLabel("SYSTEM ONLINE  /  AI CORE READY")
         greeting.setObjectName("heroEyebrow")
-        title = QLabel("Your computer,\nwith an AI control layer.")
+        title = QLabel("Your computer,\nwith an AI-native control layer.")
         title.setObjectName("heroTitle")
         title.setWordWrap(True)
         copy = QLabel(
-            "Use the mouse and keyboard normally, or tell AIOS what you want. "
-            "Both paths use the same protected system-action layer."
+            "Use the desktop normally or describe a goal in natural language. "
+            "AIOS keeps execution behind its policy and action boundary."
         )
         copy.setObjectName("heroCopy")
         copy.setWordWrap(True)
-        layout.addWidget(greeting)
-        layout.addWidget(title)
-        layout.addWidget(copy)
+        left.addWidget(greeting)
+        left.addWidget(title)
+        left.addWidget(copy)
+
+        right = QFrame()
+        right.setObjectName("heroStatus")
+        status = QVBoxLayout(right)
+        status.setContentsMargins(18, 16, 18, 16)
+        status.setSpacing(10)
+        status_title = QLabel("LIVE CORE")
+        status_title.setObjectName("statusHeading")
+        status.addWidget(status_title)
+        for label, value in (("POLICY", "ACTIVE"), ("CONTEXT", "READ-ONLY"), ("CONTROL", "MANUAL + AI")):
+            row = QHBoxLayout()
+            name = QLabel(label)
+            name.setObjectName("statusLabel")
+            val = QLabel(value)
+            val.setObjectName("statusValue")
+            row.addWidget(name)
+            row.addStretch(1)
+            row.addWidget(val)
+            status.addLayout(row)
+        layout.addLayout(left, 1)
+        layout.addWidget(right, 0)
         return frame
 
     def _make_workspace(self) -> QFrame:
@@ -152,28 +196,45 @@ class AiosShell(QMainWindow):
         header.addWidget(self.workspace_status)
         layout.addLayout(header)
 
-        cards = QHBoxLayout()
-        cards.setSpacing(10)
-        for icon, title, desc, slot in [
+        cards = QGridLayout()
+        cards.setContentsMargins(0, 0, 0, 0)
+        cards.setHorizontalSpacing(10)
+        cards.setVerticalSpacing(10)
+        card_defs = [
             ("▦", "System Monitor", "Live CPU, RAM and platform status", self._system_status),
             ("▤", "File Manager", "Browse folders and search your files", self._open_file_manager),
             ("◇", "AI Command Center", "Control AIOS using natural-language commands", self._focus_ai),
             ("◫", "Application Launcher", "Discover and launch installed apps", self._open_apps),
-        ]:
+        ]
+        for index, (icon, title, desc, slot) in enumerate(card_defs):
             card = QFrame()
             card.setObjectName("card")
+            card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
             card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(16, 14, 16, 14)
-            icon_label = QLabel(icon); icon_label.setObjectName("cardIcon")
-            title_label = QLabel(title); title_label.setObjectName("cardTitle")
-            desc_label = QLabel(desc); desc_label.setObjectName("cardDesc"); desc_label.setWordWrap(True)
-            action = QPushButton("Open"); action.setObjectName("cardButton"); action.clicked.connect(slot)
-            card_layout.addWidget(icon_label); card_layout.addWidget(title_label); card_layout.addWidget(desc_label, 1); card_layout.addWidget(action, 0, Qt.AlignmentFlag.AlignLeft)
-            cards.addWidget(card, 1)
+            card_layout.setContentsMargins(13, 11, 13, 11)
+            card_layout.setSpacing(5)
+            icon_label = QLabel(icon)
+            icon_label.setObjectName("cardIcon")
+            title_label = QLabel(title)
+            title_label.setObjectName("cardTitle")
+            desc_label = QLabel(desc)
+            desc_label.setObjectName("cardDesc")
+            desc_label.setWordWrap(True)
+            action = QPushButton("Open")
+            action.setObjectName("cardButton")
+            action.clicked.connect(slot)
+            card_layout.addWidget(icon_label)
+            card_layout.addWidget(title_label)
+            card_layout.addWidget(desc_label, 1)
+            card_layout.addWidget(action, 0, Qt.AlignmentFlag.AlignLeft)
+            cards.addWidget(card, index // 2, index % 2)
+        cards.setColumnStretch(0, 1)
+        cards.setColumnStretch(1, 1)
         layout.addLayout(cards)
 
         self.file_view = QFrame()
         self.file_view.setObjectName("embeddedPanel")
+        self.file_view.setMinimumHeight(210)
         file_layout = QVBoxLayout(self.file_view)
         file_layout.setContentsMargins(12, 12, 12, 12)
         file_header = QHBoxLayout()
@@ -221,7 +282,8 @@ class AiosShell(QMainWindow):
         self.output = QLabel("AIOS ready. Context awareness is read-only; AI actions remain gated by the policy engine.")
         self.output.setObjectName("output")
         self.output.setWordWrap(True)
-        self.output.setMinimumWidth(260)
+        self.output.setMinimumWidth(0)
+        self.output.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         layout.addWidget(self.output, 1)
         return panel
 
@@ -229,7 +291,7 @@ class AiosShell(QMainWindow):
         bar = QFrame()
         bar.setObjectName("taskbar")
         layout = QHBoxLayout(bar)
-        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(8)
 
         home = QPushButton("◉  AIOS")
@@ -526,89 +588,168 @@ class AiosShell(QMainWindow):
     @staticmethod
     def _stylesheet() -> str:
         return """
-            QWidget#root {
-                background: #070b14;
-                color: #e8eefc;
+            * {
+                font-family: "Segoe UI";
             }
-            QLabel { color: #e8eefc; }
+            QWidget#root {
+                background: #070b12;
+                color: #eaf2ff;
+            }
+            QLabel { color: #eaf2ff; }
             #brand {
-                font-size: 26px;
-                font-weight: 800;
-                letter-spacing: 3px;
+                font-size: 24px;
+                font-weight: 900;
+                letter-spacing: 4px;
+                color: #f4f8ff;
             }
             #eyebrow, #sectionTitle {
-                color: #7181a4;
-                font-size: 11px;
-                font-weight: 700;
-                letter-spacing: 1.5px;
+                color: #7183a6;
+                font-size: 10px;
+                font-weight: 800;
+                letter-spacing: 1.8px;
             }
-            #clock { color: #7f90b5; font-size: 12px; }
+            #clock { color: #8296bb; font-size: 12px; font-weight: 600; }
             #sidebar, #panel, #taskbar {
-                background: #0d1423;
-                border: 1px solid #1c2a44;
-                border-radius: 16px;
-            }
-            #hero {
-                background: #101b30;
-                border: 1px solid #243a61;
+                background: #0b111c;
+                border: 1px solid #1a2940;
                 border-radius: 18px;
             }
-            #heroEyebrow { color: #55b8ff; font-size: 11px; font-weight: 800; letter-spacing: 2px; }
-            #heroTitle { font-size: 34px; font-weight: 800; }
-            #heroCopy { color: #92a4c8; font-size: 14px; max-width: 820px; }
+            #sidebar {
+                background: #09101a;
+            }
+            #hero {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #0d1a2d, stop:1 #0c1321);
+                border: 1px solid #244161;
+                border-radius: 20px;
+            }
+            #heroEyebrow { color: #63c7ff; font-size: 10px; font-weight: 900; letter-spacing: 2.2px; }
+            #heroTitle { font-size: 30px; font-weight: 900; line-height: 1.08; color: #f2f7ff; }
+            #heroCopy { color: #8da1c4; font-size: 13px; line-height: 1.5; }
+            #heroStatus {
+                background: #08111d;
+                border: 1px solid #1f3550;
+                border-radius: 14px;
+                min-width: 220px;
+            }
+            #statusHeading { color: #5abfff; font-size: 10px; font-weight: 900; letter-spacing: 2px; }
+            #statusLabel { color: #6e82a6; font-size: 10px; font-weight: 700; letter-spacing: 1px; }
+            #statusValue { color: #73efc2; font-size: 10px; font-weight: 800; }
             #navButton, #taskButton, #cardButton {
                 text-align: left;
                 background: transparent;
-                border: 0;
-                color: #afbdd8;
-                border-radius: 9px;
-                padding: 10px 12px;
+                border: 1px solid transparent;
+                color: #a9b8d0;
+                border-radius: 10px;
+                padding: 8px 10px;
+                font-weight: 600;
             }
-            #navButton:hover, #taskButton:hover, #cardButton:hover { background: #15223a; color: #ffffff; }
-            #security { color: #6ee7b7; font-size: 10px; line-height: 1.6; }
+            #navButton:hover, #taskButton:hover {
+                background: #101d30;
+                border: 1px solid #203652;
+                color: #ffffff;
+            }
+            #security {
+                color: #76e5bd;
+                background: #081910;
+                border: 1px solid #173c2d;
+                border-radius: 10px;
+                padding: 10px;
+                font-size: 9px;
+                line-height: 1.65;
+            }
             #card {
-                background: #0f192b;
-                border: 1px solid #1f3150;
+                background: #0d1624;
+                border: 1px solid #1c304a;
                 border-radius: 14px;
-                min-height: 180px;
+                min-height: 138px;
             }
-            #cardIcon { font-size: 25px; color: #67c7ff; }
-            #cardTitle { font-size: 16px; font-weight: 700; }
-            #cardDesc { color: #8294b7; font-size: 12px; }
-            #cardButton { border: 1px solid #2a4165; padding: 7px 12px; }
-            #statusPill { color: #6ee7b7; background: #10281f; border-radius: 10px; padding: 6px 10px; font-size: 10px; font-weight: 700; }
-            #aiBar {
-                background: #0d1727;
-                border: 1px solid #2a456e;
-                border-radius: 14px;
+            #card:hover {
+                border: 1px solid #2e5b7e;
+                background: #0e1929;
             }
-            #aiGlyph { color: #60c8ff; font-size: 22px; }
-            QLineEdit {
-                background: #08101d;
-                border: 1px solid #223854;
+            #cardIcon { font-size: 26px; color: #69cbff; }
+            #cardTitle { font-size: 15px; font-weight: 800; color: #edf5ff; }
+            #cardDesc { color: #7f92b4; font-size: 11px; line-height: 1.45; }
+            #cardButton {
+                border: 1px solid #294562;
+                background: #0a1320;
+                padding: 7px 12px;
+                font-size: 11px;
+            }
+            #cardButton:hover { background: #13273d; border-color: #39719a; }
+            #statusPill {
+                color: #78edc3;
+                background: #0b2119;
+                border: 1px solid #174a35;
                 border-radius: 9px;
-                padding: 10px 12px;
-                color: #edf4ff;
-                selection-background-color: #1d4d73;
+                padding: 6px 10px;
+                font-size: 9px;
+                font-weight: 800;
             }
-            QLineEdit:focus { border: 1px solid #48b8ff; }
+            #embeddedPanel {
+                background: #09121e;
+                border: 1px solid #1a2b42;
+                border-radius: 12px;
+            }
+            #pathLabel { color: #89a0c4; font-size: 10px; font-weight: 600; }
+            #miniButton {
+                background: #0b1725;
+                border: 1px solid #213752;
+                border-radius: 8px;
+                padding: 6px 10px;
+                color: #aebfda;
+                font-size: 10px;
+            }
+            #miniButton:hover { background: #12243a; color: #fff; }
+            #fileList {
+                background: #08111c;
+                border: 1px solid #17283d;
+                border-radius: 9px;
+                padding: 5px;
+                color: #c8d7ed;
+                font-size: 11px;
+                outline: none;
+            }
+            #fileList::item { padding: 8px 8px; border-radius: 6px; }
+            #fileList::item:hover { background: #102236; }
+            #fileList::item:selected { background: #16324e; color: #ffffff; }
+            #aiBar {
+                background: #0a1320;
+                border: 1px solid #2a4e70;
+                border-radius: 15px;
+            }
+            #aiGlyph { color: #60caff; font-size: 20px; font-weight: 900; }
+            QLineEdit {
+                background: #07101a;
+                border: 1px solid #1e3650;
+                border-radius: 10px;
+                padding: 9px 12px;
+                color: #eef6ff;
+                selection-background-color: #164d73;
+            }
+            QLineEdit:focus { border: 1px solid #49bcff; background: #081522; }
             #confirmButton {
-                background: #6f5a19;
-                border: 1px solid #a18424;
+                background: #4d3b0d;
+                border: 1px solid #977a24;
                 border-radius: 9px;
                 padding: 10px 14px;
-                color: #ffffff;
-                font-weight: 700;
+                color: #fff8df;
+                font-weight: 800;
             }
             #runButton {
-                background: #1594d4;
-                border: 0;
+                background: #1294d1;
+                border: 1px solid #42bdf2;
                 border-radius: 9px;
                 padding: 10px 18px;
-                color: #ffffff;
-                font-weight: 700;
+                color: white;
+                font-weight: 800;
             }
-            #runButton:hover { background: #1eaae9; }
-            #output { color: #95a8ca; font-size: 11px; }
-            #taskStatus { color: #6d81a8; font-size: 11px; }
+            #runButton:hover { background: #1ca9e8; }
+            #output { color: #8fa5c8; font-size: 10px; }
+            #taskStatus { color: #6e83a9; font-size: 10px; font-weight: 600; }
+            #workspaceScroll { background: transparent; border: none; }
+            QScrollBar:vertical { background: #08101a; width: 8px; margin: 2px; }
+            QScrollBar::handle:vertical { background: #23405e; border-radius: 4px; min-height: 30px; }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
         """
+
