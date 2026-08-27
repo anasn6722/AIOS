@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.actions import ActionRequest, ActionResult, RiskLevel
+from core.actions import ActionRequest, ActionResult
 from core.runtime import AIOSRuntime
 
 
@@ -19,39 +19,6 @@ class Orchestrator:
         self.memory = services.memory
 
     def interpret(self, text: str) -> ActionRequest | None:
-        # v1.0.2: canonical built-in commands are resolved before planners.
-        command = " ".join(text.strip().lower().split())
-        direct_apps = {
-            "notepad": "notepad",
-            "open notepad": "notepad",
-            "calculator": "calculator",
-            "open calculator": "calculator",
-            "calc": "calculator",
-            "open calc": "calculator",
-            "chrome": "chrome",
-            "open chrome": "chrome",
-            "google chrome": "chrome",
-            "open google chrome": "chrome",
-            "edge": "edge",
-            "open edge": "edge",
-            "task manager": "task manager",
-            "open task manager": "task manager",
-            "taskmgr": "task manager",
-            "open taskmgr": "task manager",
-            "vscode": "vscode",
-            "open vscode": "vscode",
-            "vs code": "vscode",
-            "open vs code": "vscode",
-            "visual studio code": "vscode",
-            "open visual studio code": "vscode",
-            "code": "vscode",
-            "open code": "vscode",
-        }
-        if command in {"aios health", "system health", "show aios health", "show service health"}:
-            return ActionRequest("runtime_health", {}, source="manual")
-        if command in direct_apps:
-            return ActionRequest("launch_app", {"app": direct_apps[command]}, RiskLevel.LOW, "manual")
-
         intent = self.context_planner.plan(text)
         if intent is None:
             intent = self.planner.plan(text)

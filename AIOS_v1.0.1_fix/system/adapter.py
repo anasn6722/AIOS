@@ -208,18 +208,6 @@ class SystemAdapter:
             if path.is_file():
                 return str(path)
 
-        # 2b) VS Code is commonly installed per-user. Check the executable
-        # directory as well as PATH and the standard Program Files locations.
-        if normalized == "vscode":
-            vscode_candidates = [
-                Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local")) / "Programs/Microsoft VS Code/Code.exe",
-                Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / "Microsoft VS Code/Code.exe",
-                Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")) / "Microsoft VS Code/Code.exe",
-            ]
-            for path in vscode_candidates:
-                if path.is_file():
-                    return str(path)
-
         # 3) Windows shell/App Execution Alias fallback for commands such as
         # Store apps. The caller handles actual process startup.
         return None

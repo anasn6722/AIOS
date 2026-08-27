@@ -442,23 +442,22 @@ class AiosShell(QMainWindow):
             return
 
         if normalized in {"aios health", "system health", "show aios health", "show service health"}:
-            # Read health directly from the shared runtime. This is non-invasive
-            # and avoids sending a diagnostic query through the action planner.
-            health = self.orchestrator.health()
-            services = health.get("services", {})
+            result = self.orchestrator.handle("aios health")
             self.file_list.clear()
             self.path_label.setText("AIOS Health")
-            self.file_list.addItem(QListWidgetItem(f"Runtime: {health.get('runtime', 'unknown')}"))
-            self.file_list.addItem(QListWidgetItem(f"Commands: {health.get('command_count', 0)}"))
-            for name, status in services.items():
-                self.file_list.addItem(QListWidgetItem(
-                    f"{'✓' if status else '⚠'}  {name}: {'online' if status else 'unavailable'}"
-                ))
-            self.output.setText("✓ AIOS internal services are healthy.")
-            self.workspace_status.setText("AIOS HEALTH")
+            if result.ok:
+                services = result.data.get("services", {})
+                self.file_list.addItem(QListWidgetItem(f"Runtime: {result.data.get('runtime', 'unknown')}"))
+                self.file_list.addItem(QListWidgetItem(f"Commands: {result.data.get('command_count', 0)}"))
+                for name, status in services.items():
+                    self.file_list.addItem(QListWidgetItem(f"{'✓' if status else '⚠'}  {name}: {'online' if status else 'unavailable'}"))
+                self.output.setText("✓ AIOS internal services are healthy.")
+                self.workspace_status.setText("AIOS HEALTH")
+            else:
+                self.output.setText(f"⚠ {result.message}")
+                self.workspace_status.setText("HEALTH CHECK FAILED")
             self.command.clear()
             return
-
 
         # v0.9 workspace intents.
         if normalized in {"show workspaces", "list workspaces", "open workspaces", "show ai workspaces"}:
