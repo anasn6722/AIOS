@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 from ai.orchestrator import Orchestrator
 from apps.launcher import AppLauncher
 from files.manager import FileManager
+from ai.workspaces import WorkspaceEngine, WorkspaceStore
 
 
 class AiosShell(QMainWindow):
@@ -43,6 +44,8 @@ class AiosShell(QMainWindow):
         self.orchestrator = Orchestrator()
         self.file_manager = FileManager()
         self.app_launcher = AppLauncher(self.orchestrator.system)
+        self.workspace_store = WorkspaceStore()
+        self.workspace_engine = WorkspaceEngine(self.workspace_store, self.app_launcher)
         self.setWindowTitle("AIOS — AI-Native Desktop")
         self.resize(1520, 940)
         self.setMinimumSize(1180, 760)
@@ -121,10 +124,18 @@ class AiosShell(QMainWindow):
         title.setObjectName("sectionTitle")
         layout.addWidget(title)
 
-        for label in ("⌂  Home", "◈  AI Workspace", "▣  Files", "◫  Apps", "⚙  Settings"):
+        nav_items = (
+            ("⌂  Home", self._focus_ai),
+            ("◈  AI Workspace", self._focus_workspace),
+            ("▣  Files", self._open_file_manager),
+            ("◫  Apps", self._open_apps),
+            ("⚙  Settings", self._focus_ai),
+        )
+        for label, callback in nav_items:
             button = QPushButton(label)
             button.setObjectName("navButton")
             button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.clicked.connect(callback)
             layout.addWidget(button)
 
         layout.addStretch(1)
@@ -200,6 +211,28 @@ class AiosShell(QMainWindow):
         cards.setContentsMargins(0, 0, 0, 0)
         cards.setHorizontalSpacing(10)
         cards.setVerticalSpacing(10)
+        # Workspace profiles
+        workspace_panel = QFrame()
+        workspace_panel.setObjectName("workspacePanel")
+        workspace_layout = QVBoxLayout(workspace_panel)
+        workspace_layout.setContentsMargins(12, 12, 12, 12)
+        workspace_layout.setSpacing(8)
+        workspace_header = QHBoxLayout()
+        workspace_title = QLabel("AI WORKSPACES")
+        workspace_title.setObjectName("miniHeading")
+        workspace_header.addWidget(workspace_title)
+        workspace_header.addStretch(1)
+        save_btn = QPushButton("Save Current")
+        save_btn.setObjectName("miniButton")
+        save_btn.clicked.connect(self._save_current_workspace)
+        workspace_header.addWidget(save_btn)
+        workspace_layout.addLayout(workspace_header)
+        self.workspace_buttons = QHBoxLayout()
+        self.workspace_buttons.setSpacing(8)
+        workspace_layout.addLayout(self.workspace_buttons)
+        layout.addWidget(workspace_panel)
+        self._refresh_workspace_buttons()
+
         card_defs = [
             ("▦", "System Monitor", "Live CPU, RAM and platform status", self._system_status),
             ("▤", "File Manager", "Browse folders and search your files", self._open_file_manager),
@@ -406,6 +439,27 @@ class AiosShell(QMainWindow):
             self.command.clear()
             return
 
+        # v0.9 workspace intents.
+        if normalized in {"show workspaces", "list workspaces", "open workspaces", "show ai workspaces"}:
+            self._show_workspaces()
+            self.command.clear()
+            return
+
+        for prefix in ("switch to ", "open workspace ", "load workspace "):
+            if normalized.startswith(prefix):
+                name = text[len(prefix):].strip()
+                if name:
+                    self._switch_workspace(name)
+                    self.command.clear()
+                    return
+
+        if normalized.startswith("create workspace "):
+            name = text[len("create workspace "):].strip()
+            if name:
+                self._create_workspace_from_name(name)
+                self.command.clear()
+                return
+
         # v0.6 object-model intents: show structured OS information in the shell.
         if normalized in {"what apps are running", "which apps are running", "show running apps", "show running applications", "what is running"}:
             result = self.orchestrator.handle(text)
@@ -581,6 +635,84 @@ class AiosShell(QMainWindow):
         self.output.setText(("✓ " if ok else "⚠ ") + message)
 
 
+    def _focus_workspace(self) -> None:
+        self._show_workspaces()
+
+    def _refresh_workspace_buttons(self) -> None:
+        while self.workspace_buttons.count():
+            item = self.workspace_buttons.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        for workspace in self.workspace_store.list():
+            button = QPushButton(workspace.name)
+            button.setObjectName("workspaceButton")
+            button.setToolTip(workspace.description or workspace.name)
+            button.clicked.connect(lambda checked=False, name=workspace.name: self._switch_workspace(name))
+            self.workspace_buttons.addWidget(button)
+        self.workspace_buttons.addStretch(1)
+
+    def _show_workspaces(self) -> None:
+        self.file_list.clear()
+        self.path_label.setText("AI Workspaces")
+        for workspace in self.workspace_store.list():
+            apps = ", ".join(workspace.apps) if workspace.apps else "none"
+            folders = ", ".join(workspace.folders) if workspace.folders else "none"
+            item = QListWidgetItem(f"◈  {workspace.name}  —  Apps: {apps}  —  Folders: {folders}")
+            item.setData(Qt.ItemDataRole.UserRole, workspace.name)
+            self.file_list.addItem(item)
+        self.output.setText("✓ Workspace profiles ready. Select a workspace button to switch.")
+        self.workspace_status.setText("WORKSPACES")
+
+    def _switch_workspace(self, name: str) -> None:
+        workspace = self.workspace_engine.resolve(name)
+        if not workspace:
+            self.output.setText(f"⚠ Workspace not found: {name}")
+            self.workspace_status.setText("WORKSPACE NOT FOUND")
+            return
+        launched: list[str] = []
+        failed: list[str] = []
+        for app in self.workspace_engine.launchable_apps(workspace):
+            ok, message = self.app_launcher.launch(app)
+            (launched if ok else failed).append(app)
+        first_folder = next((Path(folder) for folder in workspace.folders if Path(folder).exists()), None)
+        if first_folder:
+            self.current_directory = first_folder
+            self._refresh_files()
+        detail = f"Launched: {', '.join(launched) or 'none'}."
+        if failed:
+            detail += f" Not available: {', '.join(failed)}."
+        self.output.setText(f"✓ Switched to {workspace.name}. {detail}")
+        self.workspace_status.setText(f"{workspace.name.upper()} WORKSPACE")
+
+    def _create_workspace_from_name(self, name: str) -> None:
+        name = name.strip()
+        if not name:
+            return
+        apps_text, ok = QInputDialog.getText(self, "Create AIOS Workspace", "Apps (comma-separated):", text="chrome, notepad")
+        if not ok:
+            return
+        folders_text, ok = QInputDialog.getText(self, "Create AIOS Workspace", "Folders (comma-separated):", text=str(Path.home() / "Documents"))
+        if not ok:
+            return
+        self.workspace_store.capture(name, f"Custom AIOS workspace: {name}", apps_text.split(","), folders_text.split(","))
+        self._refresh_workspace_buttons()
+        self._show_workspaces()
+        self.output.setText(f"✓ Workspace '{name}' saved.")
+        self.workspace_status.setText("WORKSPACE SAVED")
+
+    def _save_current_workspace(self) -> None:
+        name, ok = QInputDialog.getText(self, "Save Workspace", "Workspace name:")
+        if not ok or not name.strip():
+            return
+        apps, _ = QInputDialog.getText(self, "Save Workspace", "Apps (comma-separated):", text="chrome")
+        folders, _ = QInputDialog.getText(self, "Save Workspace", "Folders (comma-separated):", text=str(self.current_directory))
+        self.workspace_store.capture(name, "Saved from the current AIOS desktop", apps.split(","), folders.split(","))
+        self._refresh_workspace_buttons()
+        self._show_workspaces()
+        self.output.setText(f"✓ Saved workspace '{name}'.")
+        self.workspace_status.setText("WORKSPACE SAVED")
+
     def _focus_ai(self) -> None:
         self.command.setFocus()
         self.command.selectAll()
@@ -748,6 +880,22 @@ class AiosShell(QMainWindow):
             #output { color: #8fa5c8; font-size: 10px; }
             #taskStatus { color: #6e83a9; font-size: 10px; font-weight: 600; }
             #workspaceScroll { background: transparent; border: none; }
+            #workspacePanel {
+                background: #0a1422;
+                border: 1px solid #20364f;
+                border-radius: 12px;
+            }
+            #miniHeading { color: #7aa2c9; font-size: 10px; font-weight: 900; letter-spacing: 1.8px; }
+            #workspaceButton {
+                background: #0e1d2e;
+                border: 1px solid #23445f;
+                border-radius: 9px;
+                padding: 8px 14px;
+                color: #c7dbf1;
+                font-size: 10px;
+                font-weight: 800;
+            }
+            #workspaceButton:hover { background: #15304a; border-color: #3b7092; color: white; }
             QScrollBar:vertical { background: #08101a; width: 8px; margin: 2px; }
             QScrollBar::handle:vertical { background: #23405e; border-radius: 4px; min-height: 30px; }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
