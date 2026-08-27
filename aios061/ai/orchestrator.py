@@ -1,14 +1,19 @@
 from __future__ import annotations
 
-from core.actions import ActionRequest, ActionResult, RiskLevel
+from ai.llm_planner import LLMPlanner
+from ai.object_planner import ObjectPlanner
+from core.actions import ActionRequest, ActionResult
 from security.policy import PolicyEngine
 from system.adapter import SystemAdapter
-from ai.object_planner import ObjectPlanner
-from ai.llm_planner import LLMPlanner
 
 
 class Orchestrator:
-    """AIOS v0.5 intent layer: structured OS objects -> policy -> system adapter."""
+    """AIOS intent pipeline with deterministic-first routing.
+
+    Exact, known OS commands are resolved locally before the optional LLM is
+    consulted. This prevents a local model from accidentally changing the
+    meaning of reliable system/app commands.
+    """
 
     def __init__(self) -> None:
         self.policy = PolicyEngine()
@@ -17,29 +22,26 @@ class Orchestrator:
         self.llm_planner = LLMPlanner()
 
     def interpret(self, text: str) -> ActionRequest | None:
-        # Deterministic planner always gets first chance. This preserves stable
-        # behavior for known OS commands and prevents an optional local LLM from
-        # breaking commands that are already understood exactly.
+        # v0.6.1: deterministic commands always win.
         intent = self.planner.plan(text)
         if intent is None:
             intent = self.llm_planner.plan(text)
         if intent is None:
             return None
-
         parameters = dict(intent.parameters)
         if intent.target is not None:
+            # Normalize the object-model target into the parameter expected by
+            # the concrete system action. Keep target as metadata for future
+            # reasoning, but never rely on it for execution.
             parameters.setdefault("target", intent.target)
-
-        # Normalize object-model targets into the parameter names expected by
-        # the execution adapter. This is the critical bridge between v0.5/v0.6
-        # intents and the existing v0.3 system-action API.
-        if intent.action == "launch_app" and not parameters.get("app") and intent.target:
-            parameters["app"] = intent.target
-        elif intent.action == "open_path" and not parameters.get("path") and intent.target:
-            parameters["path"] = intent.target
-        elif intent.action == "search_files" and not parameters.get("query") and intent.target:
-            parameters["query"] = intent.target
-
+            if intent.action == "launch_app":
+                parameters.setdefault("app", intent.target)
+            elif intent.action == "open_path":
+                parameters.setdefault("path", intent.target)
+            elif intent.action == "close_process":
+                parameters.setdefault("target", intent.target)
+            elif intent.action in {"search_files", "search_files_modified"}:
+                parameters.setdefault("query", intent.target)
         return ActionRequest(intent.action, parameters, intent.risk, "ai")
 
     def handle(self, text: str, confirmed: bool = False) -> ActionResult:
@@ -47,7 +49,7 @@ class Orchestrator:
         if request is None:
             return ActionResult(
                 False,
-                "I don't understand that OS intent yet. Try: open my coding project, find pdf, show files modified today, or what apps are running.",
+                "I don't understand that OS intent yet. Try: open notepad, open chrome, system status, find pdf, or what apps are running.",
             )
         if self.policy.requires_confirmation(request) and not confirmed:
             return ActionResult(

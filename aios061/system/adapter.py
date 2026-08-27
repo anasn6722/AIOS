@@ -161,23 +161,18 @@ class SystemAdapter:
         return paths
 
     def _resolve_executable(self, app: str) -> str | None:
-        normalized = app.strip().lower().removesuffix(".exe")
-        candidates = self.APP_ALIASES.get(normalized, [normalized, normalized + ".exe"])
+        normalized = app.strip().lower()
+        candidates = self.APP_ALIASES.get(normalized, [normalized])
 
-        # 1) PATH / Windows command resolution.
         for candidate in candidates:
-            for query in (candidate, candidate.removesuffix(".exe")):
-                executable = shutil.which(query)
-                if executable:
-                    return executable
+            executable = shutil.which(candidate)
+            if executable:
+                return executable
 
-        # 2) Known installation locations.
         for path in self._candidate_paths(normalized):
             if path.is_file():
                 return str(path)
 
-        # 3) Windows shell/App Execution Alias fallback for commands such as
-        # Store apps. The caller handles actual process startup.
         return None
 
     def launch_app(self, request: ActionRequest) -> ActionResult:
@@ -188,7 +183,14 @@ class SystemAdapter:
         executable = self._resolve_executable(app)
         if executable:
             try:
-                subprocess.Popen([executable], close_fds=True)
+                if os.name == "nt":
+                    # Let Windows use the normal application association path.
+                    try:
+                        os.startfile(executable)  # type: ignore[attr-defined]
+                    except OSError:
+                        subprocess.Popen([executable], close_fds=True)
+                else:
+                    subprocess.Popen([executable], close_fds=True)
                 return ActionResult(True, f"Launched {app}.", {"executable": executable})
             except OSError as exc:
                 return ActionResult(False, f"Could not launch {app}: {exc}")

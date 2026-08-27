@@ -1,6 +1,6 @@
 # AIOS — AI-Native Operating Environment
 
-## v0.4.0 — Application Launcher + File Manager
+## v0.6.0 — Local AI Reasoning Layer
 
 AIOS is a separate project from JARVIS OFFLINE. JARVIS remains an independent resume/portfolio project.
 
@@ -10,49 +10,44 @@ AIOS is a separate project from JARVIS OFFLINE. JARVIS remains an independent re
 - Windows application discovery and launching
 - Application launcher panel
 - File manager panel with folders and files
-- Browse into directories and move up
-- File search from the home directory
-- Open files with the native OS handler
-- Live CPU / RAM / clock status
-- Confirmation gates for lock, shutdown, and restart
+- File search and modified-today search
+- Structured AIOS object model
+- Deterministic natural-language planner
+- Optional localhost LLM planner for flexible natural-language interpretation
+- Strict validation of model output before it can become an OS action
+- Existing confirmation gates for medium/high/critical actions
 
-### Architecture
-
-```text
-Manual UI / AI command
-        ↓
-Orchestrator
-        ↓
-Policy Engine
-        ↓
-System Adapter
-   ┌────┴───────────┐
-   │                │
-App Launcher    File Manager
-   │                │
-Windows Apps     Local Files
-```
-
-### Run on Windows
+### v0.6 local AI mode
+The local model is optional. By default AIOS remains deterministic/offline without an LLM process. To enable the localhost provider, set these environment variables before launching:
 
 ```powershell
-cd C:\Users\<your-user>\Desktop\AIOS\AIOS
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+$env:AIOS_LLM_ENABLED="1"
+$env:AIOS_LLM_PROVIDER="ollama"
+$env:AIOS_LLM_BASE_URL="http://127.0.0.1:11434"
+$env:AIOS_LLM_MODEL="qwen3:4b"
 python app.py
 ```
 
-### Example AI commands
+If the local model is unavailable or returns invalid output, AIOS automatically falls back to the deterministic object planner.
 
-- `system status`
-- `open notepad`
-- `open chrome`
-- `open downloads`
-- `open file manager`
-- `open apps`
-- `find pdf`
-- `show desktop`
+### Safety architecture
 
-### Safety
+```text
+User text
+   ↓
+Local LLM (optional)
+   ↓
+Strict JSON validator
+   ↓
+OSIntent
+   ↓
+ActionRequest
+   ↓
+Policy Engine
+   ↓
+System Adapter
+   ↓
+Windows
+```
 
-The AI layer does not directly call Windows APIs. System actions go through the orchestrator and policy engine. High-risk operations require confirmation.
+The local model cannot directly execute Windows APIs, shell commands, or Python code.
