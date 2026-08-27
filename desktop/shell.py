@@ -60,7 +60,7 @@ class AiosShell(QMainWindow):
         top = QHBoxLayout()
         brand = QLabel("AIOS")
         brand.setObjectName("brand")
-        version = QLabel("AI-NATIVE DESKTOP  •  v0.3")
+        version = QLabel("AI-NATIVE DESKTOP  •  v0.5")
         version.setObjectName("eyebrow")
         top.addWidget(brand)
         top.addSpacing(12)
@@ -267,6 +267,34 @@ class AiosShell(QMainWindow):
             return
 
         normalized = " ".join(text.lower().split())
+
+        # v0.5 object-model intents: show structured OS information in the shell.
+        if normalized in {"what apps are running", "which apps are running", "show running apps", "show running applications", "what is running"}:
+            result = self.orchestrator.handle(text)
+            processes = result.data.get("processes", [])
+            self.file_list.clear()
+            self.path_label.setText("Running Processes")
+            for proc in processes[:120]:
+                item = QListWidgetItem(f"⚙  {proc.get('name')}   —   PID {proc.get('pid')}")
+                item.setData(Qt.ItemDataRole.UserRole, str(proc.get('pid')))
+                self.file_list.addItem(item)
+            self.output.setText(f"✓ {result.message}")
+            self.workspace_status.setText("PROCESS VIEW")
+            self.command.clear()
+            return
+
+        if normalized in {"show files modified today", "files modified today", "what changed today", "show today's files"}:
+            result = self.orchestrator.handle(text)
+            self.file_list.clear()
+            self.path_label.setText("Modified Today")
+            for entry in result.data.get("results", [])[:120]:
+                item = QListWidgetItem(f"📄  {entry.get('name')}   —   {entry.get('path')}")
+                item.setData(Qt.ItemDataRole.UserRole, entry.get('path'))
+                self.file_list.addItem(item)
+            self.output.setText(f"✓ {result.message}")
+            self.workspace_status.setText("RECENT FILES")
+            self.command.clear()
+            return
 
         # UI-native v0.4 intents: route these into AIOS panels rather than
         # treating them as external Windows paths/commands.

@@ -86,6 +86,9 @@ class SystemAdapter:
             "restart": self.restart,
             "list_apps": self.list_apps,
             "search_files": self.search_files,
+            "search_files_modified": self.search_files_modified,
+            "list_processes": self.list_processes,
+            "close_process": self.close_process,
         }
         handler = handlers.get(request.name)
         if handler is None:
@@ -208,6 +211,64 @@ class SystemAdapter:
         results = self.file_manager.search(root, query, limit=40)
         data = [{"name": item.name, "path": str(item.path), "is_dir": item.is_dir, "size": item.size} for item in results]
         return ActionResult(True, f"Found {len(data)} matching items.", {"results": data})
+
+    def search_files_modified(self, request: ActionRequest) -> ActionResult:
+        from datetime import datetime, time
+
+        root = Path(str(request.parameters.get("root", Path.home()))).expanduser()
+        start = datetime.combine(datetime.now().date(), time.min).timestamp()
+        results = []
+        try:
+            for item in root.rglob("*"):
+                try:
+                    if item.is_file() and item.stat().st_mtime >= start:
+                        results.append({"name": item.name, "path": str(item.path if hasattr(item, "path") else item), "size": item.stat().st_size})
+                        if len(results) >= 100:
+                            break
+                except (OSError, PermissionError):
+                    continue
+        except (OSError, PermissionError):
+            pass
+        return ActionResult(True, f"Found {len(results)} files modified today.", {"results": results})
+
+    def list_processes(self, request: ActionRequest) -> ActionResult:
+        import psutil
+
+        rows = []
+        for proc in psutil.process_iter(["pid", "name", "username"]):
+            try:
+                info = proc.info
+                name = info.get("name") or "unknown"
+                rows.append({"pid": info.get("pid"), "name": name, "username": info.get("username")})
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+        rows.sort(key=lambda item: str(item["name"]).lower())
+        return ActionResult(True, f"Found {len(rows)} running processes.", {"processes": rows[:200]})
+
+    def close_process(self, request: ActionRequest) -> ActionResult:
+        import psutil
+
+        target = str(request.parameters.get("target", "")).strip().lower()
+        if not target:
+            return ActionResult(False, "No process target supplied.")
+        matches = []
+        for proc in psutil.process_iter(["pid", "name"]):
+            try:
+                name = (proc.info.get("name") or "").lower()
+                if target in name:
+                    matches.append(proc)
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+        if not matches:
+            return ActionResult(False, f"No running process matched: {target}")
+        stopped = 0
+        for proc in matches[:5]:
+            try:
+                proc.terminate()
+                stopped += 1
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return ActionResult(True, f"Requested termination for {stopped} process(es) matching '{target}'.", {"matched": len(matches)})
 
     def show_desktop(self, request: ActionRequest) -> ActionResult:
         if os.name != "nt":
