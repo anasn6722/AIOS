@@ -15,6 +15,8 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QFrame,
     QGridLayout,
+    QGroupBox,
+    QPlainTextEdit,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -266,6 +268,7 @@ class AiosShell(QMainWindow):
         cards.setColumnStretch(0, 1)
         cards.setColumnStretch(1, 1)
         layout.addLayout(cards)
+        layout.addWidget(self._make_command_center())
 
         self.file_view = QFrame()
         self.file_view.setObjectName("embeddedPanel")
@@ -286,6 +289,95 @@ class AiosShell(QMainWindow):
         self._refresh_files()
         layout.addWidget(self.file_view, 1)
         return panel
+
+    def _make_command_center(self) -> QFrame:
+        """Central AI command surface for text, context, history, and quick actions."""
+        panel = QFrame()
+        panel.setObjectName("commandCenter")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(10)
+
+        header = QHBoxLayout()
+        title_box = QVBoxLayout()
+        title_box.setSpacing(2)
+        title = QLabel("AI COMMAND CENTER")
+        title.setObjectName("ccTitle")
+        subtitle = QLabel("Describe a goal, ask about your computer, or run a protected OS action.")
+        subtitle.setObjectName("ccSubtitle")
+        subtitle.setWordWrap(True)
+        title_box.addWidget(title)
+        title_box.addWidget(subtitle)
+        header.addLayout(title_box, 1)
+        self.cc_state = QLabel("READY")
+        self.cc_state.setObjectName("ccState")
+        header.addWidget(self.cc_state, 0, Qt.AlignmentFlag.AlignTop)
+        layout.addLayout(header)
+
+        chips = QHBoxLayout()
+        chips.setSpacing(6)
+        quick = (
+            ("Context", "show my context"),
+            ("Health", "aios health"),
+            ("Processes", "what apps are running"),
+            ("History", "show recent commands"),
+            ("Workspaces", "show workspaces"),
+        )
+        for label, command in quick:
+            button = QPushButton(label)
+            button.setObjectName("quickChip")
+            button.clicked.connect(lambda checked=False, text=command: self._run_quick_command(text))
+            chips.addWidget(button)
+        chips.addStretch(1)
+        layout.addLayout(chips)
+
+        lower = QHBoxLayout()
+        lower.setSpacing(10)
+        self.cc_output = QPlainTextEdit()
+        self.cc_output.setObjectName("ccOutput")
+        self.cc_output.setReadOnly(True)
+        self.cc_output.setMaximumBlockCount(200)
+        self.cc_output.setPlaceholderText("AIOS responses and execution details appear here…")
+        self.cc_output.setMinimumHeight(88)
+        lower.addWidget(self.cc_output, 2)
+
+        status = QFrame()
+        status.setObjectName("ccStatusPanel")
+        status_layout = QVBoxLayout(status)
+        status_layout.setContentsMargins(12, 10, 12, 10)
+        status_layout.setSpacing(7)
+        self.cc_metrics = {}
+        for key, label in (("cpu", "CPU"), ("ram", "RAM"), ("app", "ACTIVE APP"), ("workspace", "WORKSPACE")):
+            row = QHBoxLayout()
+            name = QLabel(label)
+            name.setObjectName("ccMetricLabel")
+            value = QLabel("—")
+            value.setObjectName("ccMetricValue")
+            self.cc_metrics[key] = value
+            row.addWidget(name)
+            row.addStretch(1)
+            row.addWidget(value)
+            status_layout.addLayout(row)
+        lower.addWidget(status, 1)
+        layout.addLayout(lower)
+        return panel
+
+    def _run_quick_command(self, text: str) -> None:
+        self.command.setText(text)
+        self.run_command()
+
+    def _update_command_center(self, result_text: str | None = None) -> None:
+        if result_text:
+            self.cc_output.setPlainText(result_text)
+        try:
+            context = self.orchestrator.context.snapshot()
+            active = context.get("active_window") or {}
+            self.cc_metrics["cpu"].setText(f"{context.get('cpu_percent', '?')}%")
+            self.cc_metrics["ram"].setText(f"{context.get('ram_percent', '?')}%")
+            self.cc_metrics["app"].setText(active.get("process") or "Unknown")
+            self.cc_metrics["workspace"].setText(self.workspace_status.text())
+        except Exception:
+            pass
 
     def _make_ai_bar(self) -> QFrame:
         panel = QFrame()
@@ -357,6 +449,9 @@ class AiosShell(QMainWindow):
         cpu = psutil.cpu_percent(interval=None)
         ram = psutil.virtual_memory().percent
         self.clock.setText(f"{now}   •   CPU {cpu:.0f}%   •   RAM {ram:.0f}%")
+        if hasattr(self, "cc_metrics"):
+            self.cc_metrics["cpu"].setText(f"{cpu:.0f}%")
+            self.cc_metrics["ram"].setText(f"{ram:.0f}%")
 
     def run_command(self) -> None:
         text = self.command.text().strip()
@@ -388,6 +483,7 @@ class AiosShell(QMainWindow):
             self.output.setText(f"✓ You are using: {process}\nWindow: {title}\n{pid_text}")
             self.workspace_status.setText("ACTIVE APP")
             self.command.clear()
+            self._update_command_center(self.output.text())
             return
 
         if normalized in {
@@ -440,25 +536,6 @@ class AiosShell(QMainWindow):
             self.workspace_status.setText("COMMAND HISTORY")
             self.command.clear()
             return
-
-        if normalized in {"aios health", "system health", "show aios health", "show service health"}:
-            # Read health directly from the shared runtime. This is non-invasive
-            # and avoids sending a diagnostic query through the action planner.
-            health = self.orchestrator.health()
-            services = health.get("services", {})
-            self.file_list.clear()
-            self.path_label.setText("AIOS Health")
-            self.file_list.addItem(QListWidgetItem(f"Runtime: {health.get('runtime', 'unknown')}"))
-            self.file_list.addItem(QListWidgetItem(f"Commands: {health.get('command_count', 0)}"))
-            for name, status in services.items():
-                self.file_list.addItem(QListWidgetItem(
-                    f"{'✓' if status else '⚠'}  {name}: {'online' if status else 'unavailable'}"
-                ))
-            self.output.setText("✓ AIOS internal services are healthy.")
-            self.workspace_status.setText("AIOS HEALTH")
-            self.command.clear()
-            return
-
 
         # v0.9 workspace intents.
         if normalized in {"show workspaces", "list workspaces", "open workspaces", "show ai workspaces"}:
@@ -560,6 +637,7 @@ class AiosShell(QMainWindow):
             self.output.setText(f"⚠ {result.message}")
             self.workspace_status.setText("ACTION BLOCKED")
         self.command.clear()
+        self._update_command_center(self.output.text())
 
     def confirm_command(self) -> None:
         text = self.confirm_button.property("command_text")
@@ -920,5 +998,17 @@ class AiosShell(QMainWindow):
             QScrollBar:vertical { background: #08101a; width: 8px; margin: 2px; }
             QScrollBar::handle:vertical { background: #23405e; border-radius: 4px; min-height: 30px; }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
+            #commandCenter {
+                background: #08121f; border: 1px solid #264a68; border-radius: 16px;
+            }
+            #ccTitle { color: #f0f7ff; font-size: 15px; font-weight: 900; letter-spacing: 1.2px; }
+            #ccSubtitle { color: #7e95b9; font-size: 10px; }
+            #ccState { color: #78edc3; background: #0b2119; border: 1px solid #174a35; border-radius: 8px; padding: 5px 9px; font-size: 9px; font-weight: 900; }
+            #quickChip { background: #0d1d2d; border: 1px solid #234761; color: #aec4dd; border-radius: 9px; padding: 7px 11px; font-size: 10px; font-weight: 700; }
+            #quickChip:hover { background: #15304a; border-color: #39739a; color: #fff; }
+            #ccOutput { background: #06101a; border: 1px solid #172d43; border-radius: 10px; color: #bdd0e7; font-size: 10px; padding: 8px; }
+            #ccStatusPanel { background: #0a1623; border: 1px solid #1c344d; border-radius: 10px; }
+            #ccMetricLabel { color: #6880a4; font-size: 9px; font-weight: 800; letter-spacing: 1px; }
+            #ccMetricValue { color: #80e3bd; font-size: 10px; font-weight: 800; }
         """
 

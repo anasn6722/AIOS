@@ -39,15 +39,47 @@ class SystemAdapter:
         "taskmgr": ["taskmgr.exe"],
         "chrome": ["chrome.exe"],
         "google chrome": ["chrome.exe"],
+        "vscode": ["code.exe", "Code.exe"],
+        "vs code": ["code.exe", "Code.exe"],
+        "visual studio code": ["code.exe", "Code.exe"],
+        "code": ["code.exe", "Code.exe"],
         "edge": ["msedge.exe"],
         "microsoft edge": ["msedge.exe"],
-        "vscode": ["code.exe", "code.cmd"],
-        "vs code": ["code.exe", "code.cmd"],
-        "visual studio code": ["code.exe", "code.cmd"],
-        "code": ["code.exe", "code.cmd"],
     }
 
     COMMON_WINDOWS_APPS = {
+        "vscode": [
+            Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData/Local")))
+            / "Programs/Microsoft VS Code/Code.exe",
+            Path(os.environ.get("PROGRAMFILES", r"C:\Program Files"))
+            / "Microsoft VS Code/Code.exe",
+            Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)"))
+            / "Microsoft VS Code/Code.exe",
+        ],
+        "vs code": [
+            Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData/Local")))
+            / "Programs/Microsoft VS Code/Code.exe",
+            Path(os.environ.get("PROGRAMFILES", r"C:\Program Files"))
+            / "Microsoft VS Code/Code.exe",
+            Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)"))
+            / "Microsoft VS Code/Code.exe",
+        ],
+        "visual studio code": [
+            Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData/Local")))
+            / "Programs/Microsoft VS Code/Code.exe",
+            Path(os.environ.get("PROGRAMFILES", r"C:\Program Files"))
+            / "Microsoft VS Code/Code.exe",
+            Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)"))
+            / "Microsoft VS Code/Code.exe",
+        ],
+        "code": [
+            Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData/Local")))
+            / "Programs/Microsoft VS Code/Code.exe",
+            Path(os.environ.get("PROGRAMFILES", r"C:\Program Files"))
+            / "Microsoft VS Code/Code.exe",
+            Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)"))
+            / "Microsoft VS Code/Code.exe",
+        ],
         "chrome": [
             Path(os.environ.get("PROGRAMFILES", r"C:\Program Files"))
             / "Google/Chrome/Application/chrome.exe",
@@ -79,21 +111,6 @@ class SystemAdapter:
             / "Microsoft/Edge/Application/msedge.exe",
             Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData/Local")))
             / "Microsoft/Edge/Application/msedge.exe",
-        ],
-        "vscode": [
-            Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / "Microsoft VS Code/Code.exe",
-            Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")) / "Microsoft VS Code/Code.exe",
-            Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData/Local"))) / "Programs/Microsoft VS Code/Code.exe",
-        ],
-        "vs code": [
-            Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / "Microsoft VS Code/Code.exe",
-            Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")) / "Microsoft VS Code/Code.exe",
-            Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData/Local"))) / "Programs/Microsoft VS Code/Code.exe",
-        ],
-        "visual studio code": [
-            Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / "Microsoft VS Code/Code.exe",
-            Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")) / "Microsoft VS Code/Code.exe",
-            Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData/Local"))) / "Programs/Microsoft VS Code/Code.exe",
         ],
     }
 
@@ -208,18 +225,6 @@ class SystemAdapter:
             if path.is_file():
                 return str(path)
 
-        # 2b) VS Code is commonly installed per-user. Check the executable
-        # directory as well as PATH and the standard Program Files locations.
-        if normalized == "vscode":
-            vscode_candidates = [
-                Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local")) / "Programs/Microsoft VS Code/Code.exe",
-                Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / "Microsoft VS Code/Code.exe",
-                Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")) / "Microsoft VS Code/Code.exe",
-            ]
-            for path in vscode_candidates:
-                if path.is_file():
-                    return str(path)
-
         # 3) Windows shell/App Execution Alias fallback for commands such as
         # Store apps. The caller handles actual process startup.
         return None
@@ -240,17 +245,9 @@ class SystemAdapter:
         # Windows shell resolution handles Store apps and App Execution Aliases.
         if os.name == "nt":
             try:
-                completed = subprocess.run(
-                    ["cmd", "/c", "start", "", app],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                if completed.returncode == 0:
-                    return ActionResult(True, f"Launch request sent for {app}.")
-                detail = (completed.stderr or completed.stdout or "Windows could not resolve the application.").strip()
-                return ActionResult(False, f"Could not launch {app}: {detail}")
-            except (OSError, subprocess.SubprocessError) as exc:
+                subprocess.Popen(f'start "" "{app}"', shell=True)
+                return ActionResult(True, f"Launch request sent for {app}.")
+            except OSError as exc:
                 return ActionResult(False, f"Could not launch {app}: {exc}")
 
         return ActionResult(False, f"Could not find application: {app}")
