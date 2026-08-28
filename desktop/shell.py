@@ -50,7 +50,7 @@ class _VoiceWorker(QObject):
 
 
 class AiosShell(QMainWindow):
-    """AIOS desktop shell v0.2.
+    """AIOS desktop shell v1.3.
 
     This is still a normal desktop application, not a replacement Windows shell.
     The AI command layer is kept behind the existing Orchestrator/Policy boundary.
@@ -87,7 +87,7 @@ class AiosShell(QMainWindow):
         top.setSpacing(10)
         brand = QLabel("AIOS")
         brand.setObjectName("brand")
-        version = QLabel("AI-NATIVE OPERATING ENVIRONMENT  •  v0.8")
+        version = QLabel("AI-NATIVE OPERATING ENVIRONMENT  •  v1.3")
         version.setObjectName("eyebrow")
         top.addWidget(brand, 0)
         top.addWidget(version, 0)
@@ -407,31 +407,33 @@ class AiosShell(QMainWindow):
         return panel
 
     def _capture_screen(self) -> None:
-        self.media_status.setText("VOICE: READY   •   VISION: CAPTURING")
+        self.media_status.setText("VOICE: READY   •   VISION: ANALYZING")
         QApplication.processEvents()
         try:
             result = self.vision_engine.capture_screen()
-        except Exception as exc:  # GUI-safe reporting for capture backends
+        except Exception as exc:
             result = None
-            message = f"Screen capture failed: {exc}"
+            message = f"Vision analysis failed: {exc}"
+        else:
+            message = result.message if result else "Vision analysis failed."
+
         if result is not None and result.ok:
             data = result.data
-            message = (
-                f"✓ Screen captured.\nImage: {data.get('image')}\n"
-                f"Size: {data.get('width')}×{data.get('height')}\n"
-                f"Active app: {data.get('active_process') or 'Unknown'}"
-            )
-            self.output.setText(message)
-            self.cc_output.setPlainText(message)
-            self.workspace_status.setText("VISION CAPTURE")
+            details = [data.get("summary") or result.message]
+            if data.get("image"):
+                details.append(f"Screenshot: {data['image']}")
+            if data.get("ocr_text"):
+                details.append("SCREEN TEXT:\n" + data["ocr_text"][:1800])
+            self.output.setText("✓ " + result.message)
+            self.cc_output.setPlainText("\n".join(details))
+            self.workspace_status.setText("VISION ANALYZED")
             self.media_status.setText("VOICE: READY   •   VISION: READY")
-        else:
-            if result is not None:
-                message = result.message
-            self.output.setText(f"⚠ {message}")
-            self.cc_output.setPlainText(self.output.text())
-            self.workspace_status.setText("VISION ERROR")
-            self.media_status.setText("VOICE: READY   •   VISION: ERROR")
+            return
+
+        self.output.setText("⚠ " + message)
+        self.cc_output.setPlainText(self.output.text())
+        self.workspace_status.setText("VISION ERROR")
+        self.media_status.setText("VOICE: READY   •   VISION: ERROR")
 
     def _start_voice_input(self) -> None:
         if self._voice_thread is not None and self._voice_thread.isRunning():
@@ -593,6 +595,36 @@ class AiosShell(QMainWindow):
             return
 
         normalized = " ".join(text.lower().split())
+
+        # v1.3: screen understanding is read-only and bypasses the general planner.
+        if normalized in {
+            "what is on my screen",
+            "what is on my desktop",
+            "analyze my screen",
+            "analyze the screen",
+            "read my screen",
+        }:
+            self.orchestrator.context.record_command(text)
+            try:
+                result = self.vision_engine.capture_screen()
+            except Exception as exc:
+                result = None
+                message = f"Vision analysis failed: {exc}"
+            else:
+                message = result.message if result else "Vision analysis failed."
+
+            if result is not None and result.ok:
+                self.output.setText("✓ " + result.message)
+                self.cc_output.setPlainText(result.data.get("summary") or result.message)
+                self.workspace_status.setText("VISION ANALYZED")
+                self.media_status.setText("VOICE: READY   •   VISION: READY")
+            else:
+                self.output.setText("⚠ " + message)
+                self.cc_output.setPlainText(self.output.text())
+                self.workspace_status.setText("VISION ERROR")
+                self.media_status.setText("VOICE: READY   •   VISION: ERROR")
+            self.command.clear()
+            return
 
         # v0.7.2: context queries are read-only and are handled directly by
         # the ContextEngine. This avoids coupling UI context features to the
