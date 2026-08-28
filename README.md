@@ -45,3 +45,27 @@ Workspace switching only launches configured applications and opens folders; it 
 ## v1.0.0 Core Integration
 
 AIOS now uses a shared runtime/service container for the policy engine, system adapter, context, memory, object planner, LLM planner, file manager, app launcher, and workspace engine. This establishes stable internal boundaries for future AI agents and native OS services.
+
+## v1.2 Voice + Vision
+
+AIOS v1.2 adds a local-first media layer to the Unified AI Command Center.
+
+### Vision
+- Captures the current desktop to `%USERPROFILE%\\.aios\\captures`.
+- Combines the image metadata with the read-only context snapshot.
+- No system action is granted to the vision layer.
+
+### Voice
+- Uses `sounddevice` for microphone capture and Vosk for local transcription.
+- Configure a local Vosk model with `AIOS_VOSK_MODEL`.
+- The voice button records a short command, places the transcription in the AI command bar, and sends it through the existing orchestrator/policy boundary.
+
+Voice is optional at installation time. Without the microphone backend or a Vosk model, AIOS remains fully usable through text.
+
+
+### v1.2.1 UI fix
+Voice Input and Capture Screen are now prominent controls at the top of the AI Command Center.
+
+
+## v1.2.9 voice architecture
+Voice uses faster-whisper `base.en` on CPU/int8 as the primary offline recognizer, with Vosk as a fallback. The first Whisper model load may download model files; afterward the model is cached locally under `C:\AIOS\models\whisper`.

@@ -13,6 +13,8 @@ from ai.memory import MemoryStore
 from ai.object_planner import ObjectPlanner
 from ai.context_intents import ContextIntentPlanner
 from ai.workspaces import WorkspaceEngine, WorkspaceStore
+from ai.voice import VoiceEngine
+from ai.vision import VisionEngine
 
 
 class Service(Protocol):
@@ -34,6 +36,8 @@ class AIOSServices:
     app_launcher: AppLauncher
     workspace_store: WorkspaceStore
     workspace_engine: WorkspaceEngine
+    voice: VoiceEngine
+    vision: VisionEngine
 
     @classmethod
     def build(cls) -> "AIOSServices":
@@ -48,6 +52,8 @@ class AIOSServices:
         app_launcher = AppLauncher(system)
         workspace_store = WorkspaceStore()
         workspace_engine = WorkspaceEngine(workspace_store, app_launcher)
+        voice = VoiceEngine()
+        vision = VisionEngine(context)
 
         system.context_provider = context
         system.memory_provider = memory
@@ -64,6 +70,8 @@ class AIOSServices:
             app_launcher=app_launcher,
             workspace_store=workspace_store,
             workspace_engine=workspace_engine,
+            voice=voice,
+            vision=vision,
         )
 
     def health(self) -> dict[str, Any]:
@@ -78,4 +86,6 @@ class AIOSServices:
             "file_manager": True,
             "app_launcher": True,
             "workspace_engine": True,
+            "voice": self.voice.status(),
+            "vision": True,
         }

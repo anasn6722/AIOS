@@ -5,9 +5,10 @@ from pathlib import Path
 from datetime import datetime
 
 import psutil
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QObject, QThread, QTimer, Qt, Signal, Slot
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QApplication,
     QDialog,
     QDialogButtonBox,
     QInputDialog,
@@ -35,6 +36,19 @@ from files.manager import FileManager
 from ai.workspaces import WorkspaceEngine, WorkspaceStore
 
 
+class _VoiceWorker(QObject):
+    finished = Signal(object)
+
+    def __init__(self, engine) -> None:
+        super().__init__()
+        self.engine = engine
+
+    @Slot()
+    def run(self) -> None:
+        result = self.engine.record_and_transcribe(5)
+        self.finished.emit(result)
+
+
 class AiosShell(QMainWindow):
     """AIOS desktop shell v0.2.
 
@@ -50,6 +64,10 @@ class AiosShell(QMainWindow):
         self.app_launcher = services.app_launcher
         self.workspace_store = services.workspace_store
         self.workspace_engine = services.workspace_engine
+        self.voice_engine = services.voice
+        self.vision_engine = services.vision
+        self._voice_thread: QThread | None = None
+        self._voice_worker: object | None = None
         self.setWindowTitle("AIOS — AI-Native Desktop")
         self.resize(1520, 940)
         self.setMinimumSize(1180, 760)
@@ -315,6 +333,32 @@ class AiosShell(QMainWindow):
         layout.addLayout(header)
 
         chips = QHBoxLayout()
+        # Prominent media controls
+        media_banner = QHBoxLayout()
+        media_banner.setSpacing(8)
+        media_title = QLabel("INTERACT")
+        media_title.setObjectName("mediaTitle")
+        media_banner.addWidget(media_title)
+        voice_btn = QPushButton("🎙  VOICE INPUT")
+        voice_btn.setObjectName("mediaButton")
+        voice_btn.setMinimumHeight(42)
+        voice_btn.setMinimumWidth(170)
+        voice_btn.setToolTip("Record a short offline voice command")
+        voice_btn.clicked.connect(self._start_voice_input)
+        media_banner.addWidget(voice_btn)
+        vision_btn = QPushButton("◉  CAPTURE SCREEN")
+        vision_btn.setObjectName("mediaButton")
+        vision_btn.setMinimumHeight(42)
+        vision_btn.setMinimumWidth(190)
+        vision_btn.setToolTip("Capture the current screen for AIOS vision")
+        vision_btn.clicked.connect(self._capture_screen)
+        media_banner.addWidget(vision_btn)
+        self.media_status = QLabel("VOICE: READY   •   VISION: READY")
+        self.media_status.setObjectName("mediaStatus")
+        media_banner.addWidget(self.media_status, 0, Qt.AlignmentFlag.AlignVCenter)
+        media_banner.addStretch(1)
+        layout.addLayout(media_banner)
+
         chips.setSpacing(6)
         quick = (
             ("Context", "show my context"),
@@ -361,6 +405,96 @@ class AiosShell(QMainWindow):
         lower.addWidget(status, 1)
         layout.addLayout(lower)
         return panel
+
+    def _capture_screen(self) -> None:
+        self.media_status.setText("VOICE: READY   •   VISION: CAPTURING")
+        QApplication.processEvents()
+        try:
+            result = self.vision_engine.capture_screen()
+        except Exception as exc:  # GUI-safe reporting for capture backends
+            result = None
+            message = f"Screen capture failed: {exc}"
+        if result is not None and result.ok:
+            data = result.data
+            message = (
+                f"✓ Screen captured.\nImage: {data.get('image')}\n"
+                f"Size: {data.get('width')}×{data.get('height')}\n"
+                f"Active app: {data.get('active_process') or 'Unknown'}"
+            )
+            self.output.setText(message)
+            self.cc_output.setPlainText(message)
+            self.workspace_status.setText("VISION CAPTURE")
+            self.media_status.setText("VOICE: READY   •   VISION: READY")
+        else:
+            if result is not None:
+                message = result.message
+            self.output.setText(f"⚠ {message}")
+            self.cc_output.setPlainText(self.output.text())
+            self.workspace_status.setText("VISION ERROR")
+            self.media_status.setText("VOICE: READY   •   VISION: ERROR")
+
+    def _start_voice_input(self) -> None:
+        if self._voice_thread is not None and self._voice_thread.isRunning():
+            self.output.setText("⚠ Voice capture is already running.")
+            return
+        status = self.voice_engine.status()
+        if not status.get("microphone_backend") or not status.get("vosk") or not status.get("model_path"):
+            problems = []
+            if not status.get("microphone_backend"):
+                problems.append("sounddevice is not installed or microphone backend is unavailable")
+            if not status.get("vosk"):
+                problems.append("Vosk is not installed")
+            if not status.get("model_path"):
+                problems.append("Vosk model is not configured")
+            message = "⚠ Voice is not ready: " + "; ".join(problems)
+            self.output.setText(message)
+            self.cc_output.setPlainText(message)
+            self.workspace_status.setText("VOICE SETUP")
+            self.media_status.setText("VOICE: SETUP REQUIRED   •   VISION: READY")
+            return
+        self.output.setText("● Listening for 5 seconds… speak a command now")
+        self.cc_output.setPlainText(self.output.text())
+        self.workspace_status.setText("VOICE LISTENING")
+        self.media_status.setText("VOICE: LISTENING   •   VISION: READY")
+        thread = QThread(self)
+        worker = _VoiceWorker(self.voice_engine)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._finish_voice_input)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        self._voice_thread = thread
+        self._voice_worker = worker
+        thread.start()
+
+    @Slot(object)
+    def _finish_voice_input(self, result) -> None:
+        if result.ok and result.text:
+            self.command.setText(result.text)
+            self.output.setText(f"✓ Heard: {result.text}")
+            self.workspace_status.setText("VOICE READY")
+            self.media_status.setText("VOICE: READY   •   VISION: READY")
+            self.run_command()
+        else:
+            message = f"⚠ {result.message}"
+            if result.data:
+                status = result.data
+                details = []
+                if not status.get("microphone_backend"):
+                    details.append("microphone backend unavailable")
+                if not status.get("vosk"):
+                    details.append("vosk package unavailable")
+                if not status.get("model_path"):
+                    details.append("Vosk model not found")
+                if details:
+                    message += "\nDetails: " + ", ".join(details)
+            self.output.setText(message)
+            self.cc_output.setPlainText(message)
+            self.workspace_status.setText("VOICE SETUP")
+            self.media_status.setText("VOICE: SETUP REQUIRED   •   VISION: READY")
+        self._voice_thread = None
+        self._voice_worker = None
 
     def _run_quick_command(self, text: str) -> None:
         self.command.setText(text)
@@ -1007,6 +1141,9 @@ class AiosShell(QMainWindow):
             #quickChip { background: #0d1d2d; border: 1px solid #234761; color: #aec4dd; border-radius: 9px; padding: 7px 11px; font-size: 10px; font-weight: 700; }
             #quickChip:hover { background: #15304a; border-color: #39739a; color: #fff; }
             #ccOutput { background: #06101a; border: 1px solid #172d43; border-radius: 10px; color: #bdd0e7; font-size: 10px; padding: 8px; }
+            #mediaButton { background: #0c1b2b; border: 1px solid #24506f; color: #b9d4ea; border-radius: 9px; padding: 7px 11px; font-size: 10px; font-weight: 800; }
+            #mediaButton:hover { background: #13314a; border-color: #3f86aa; color: #ffffff; }
+            #mediaStatus { color: #76e5bd; font-size: 9px; font-weight: 800; letter-spacing: 0.8px; }
             #ccStatusPanel { background: #0a1623; border: 1px solid #1c344d; border-radius: 10px; }
             #ccMetricLabel { color: #6880a4; font-size: 9px; font-weight: 800; letter-spacing: 1px; }
             #ccMetricValue { color: #80e3bd; font-size: 10px; font-weight: 800; }
