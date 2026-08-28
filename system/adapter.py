@@ -114,6 +114,69 @@ class SystemAdapter:
         ],
     }
 
+    def inspect_ui(self, request: ActionRequest) -> ActionResult:
+        try:
+            from ai.vision import VisionEngine
+        except Exception as exc:
+            return ActionResult(False, f"Vision service unavailable: {exc}")
+        if self.context_provider is None:
+            return ActionResult(False, "Context provider unavailable.")
+        vision = VisionEngine(self.context_provider)
+        result = vision.inspect_controls()
+        return ActionResult(result.ok, result.message, result.data)
+
+    def click_control(self, request: ActionRequest) -> ActionResult:
+        target = str(request.parameters.get("target", "")).strip()
+        if not target:
+            return ActionResult(False, "No UI control target supplied.")
+        if os.name != "nt":
+            return ActionResult(False, "UI automation is currently supported on Windows only.")
+        try:
+            from pywinauto import Desktop
+        except ImportError:
+            return ActionResult(False, "UI Automation unavailable. Install pywinauto.")
+        if self.context_provider is None:
+            return ActionResult(False, "Context provider unavailable.")
+
+        try:
+            hwnd = int(self.context_provider.snapshot().get("active_window", {}).get("hwnd") or 0)
+        except (TypeError, ValueError):
+            hwnd = 0
+        if not hwnd:
+            try:
+                hwnd = int(ctypes.windll.user32.GetForegroundWindow())
+            except (AttributeError, OSError):
+                hwnd = 0
+        if not hwnd:
+            return ActionResult(False, "No foreground window available for UI action.")
+
+        try:
+            window = Desktop(backend="uia").window(handle=hwnd)
+            target_norm = " ".join(target.lower().split())
+            exact = []
+            partial = []
+            for element in window.descendants():
+                try:
+                    name = " ".join((element.window_text() or "").lower().split())
+                    control_type = str(getattr(element.element_info, "control_type", ""))
+                    if not name:
+                        continue
+                    if name == target_norm:
+                        exact.append((element, control_type))
+                    elif target_norm in name:
+                        partial.append((element, control_type))
+                except Exception:
+                    continue
+            matches = exact or partial
+            if not matches:
+                return ActionResult(False, f"Could not find a visible UI control named '{target}'.")
+            element, control_type = matches[0]
+            rect = element.rectangle()
+            element.click_input()
+            return ActionResult(True, f"Clicked '{target}'.", {"control_type": control_type, "rect": {"left": rect.left, "top": rect.top, "right": rect.right, "bottom": rect.bottom}})
+        except Exception as exc:
+            return ActionResult(False, f"UI click failed: {exc}")
+
     def execute(self, request: ActionRequest) -> ActionResult:
         handlers = {
             "system_info": self.system_info,
@@ -133,6 +196,8 @@ class SystemAdapter:
             "open_windows": self.open_windows,
             "recent_commands": self.recent_commands,
             "runtime_health": self.runtime_health,
+            "inspect_ui": self.inspect_ui,
+            "click_control": self.click_control,
         }
         handler = handlers.get(request.name)
         if handler is None:

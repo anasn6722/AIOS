@@ -409,31 +409,32 @@ class AiosShell(QMainWindow):
     def _capture_screen(self) -> None:
         self.media_status.setText("VOICE: READY   •   VISION: ANALYZING")
         QApplication.processEvents()
+        result = None
+        message = "Vision analysis failed."
         try:
             result = self.vision_engine.capture_screen()
         except Exception as exc:
-            result = None
             message = f"Vision analysis failed: {exc}"
-        else:
-            message = result.message if result else "Vision analysis failed."
-
         if result is not None and result.ok:
             data = result.data
-            details = [data.get("summary") or result.message]
+            summary = data.get("summary") or result.message
+            details = [summary]
             if data.get("image"):
                 details.append(f"Screenshot: {data['image']}")
-            if data.get("ocr_text"):
-                details.append("SCREEN TEXT:\n" + data["ocr_text"][:1800])
+            ocr = data.get("ocr_text")
+            if ocr:
+                details.append("\nSCREEN TEXT:\n" + ocr[:1800])
             self.output.setText("✓ " + result.message)
             self.cc_output.setPlainText("\n".join(details))
             self.workspace_status.setText("VISION ANALYZED")
             self.media_status.setText("VOICE: READY   •   VISION: READY")
-            return
-
-        self.output.setText("⚠ " + message)
-        self.cc_output.setPlainText(self.output.text())
-        self.workspace_status.setText("VISION ERROR")
-        self.media_status.setText("VOICE: READY   •   VISION: ERROR")
+        else:
+            if result is not None:
+                message = result.message
+            self.output.setText("⚠ " + message)
+            self.cc_output.setPlainText(self.output.text())
+            self.workspace_status.setText("VISION ERROR")
+            self.media_status.setText("VOICE: READY   •   VISION: ERROR")
 
     def _start_voice_input(self) -> None:
         if self._voice_thread is not None and self._voice_thread.isRunning():
@@ -596,7 +597,8 @@ class AiosShell(QMainWindow):
 
         normalized = " ".join(text.lower().split())
 
-        # v1.3: screen understanding is read-only and bypasses the general planner.
+        # v1.3: screen-analysis queries are read-only and handled directly by
+        # the vision engine so they do not depend on the general planner.
         if normalized in {
             "what is on my screen",
             "what is on my desktop",
@@ -605,21 +607,15 @@ class AiosShell(QMainWindow):
             "read my screen",
         }:
             self.orchestrator.context.record_command(text)
-            try:
-                result = self.vision_engine.capture_screen()
-            except Exception as exc:
-                result = None
-                message = f"Vision analysis failed: {exc}"
-            else:
-                message = result.message if result else "Vision analysis failed."
-
-            if result is not None and result.ok:
+            result = self.vision_engine.capture_screen()
+            if result.ok:
+                data = result.data
                 self.output.setText("✓ " + result.message)
-                self.cc_output.setPlainText(result.data.get("summary") or result.message)
+                self.cc_output.setPlainText(data.get("summary") or result.message)
                 self.workspace_status.setText("VISION ANALYZED")
                 self.media_status.setText("VOICE: READY   •   VISION: READY")
             else:
-                self.output.setText("⚠ " + message)
+                self.output.setText("⚠ " + result.message)
                 self.cc_output.setPlainText(self.output.text())
                 self.workspace_status.setText("VISION ERROR")
                 self.media_status.setText("VOICE: READY   •   VISION: ERROR")
@@ -723,6 +719,28 @@ class AiosShell(QMainWindow):
                 self._create_workspace_from_name(name)
                 self.command.clear()
                 return
+
+        # v1.4: inspect the current foreground window through Windows UI Automation.
+        if normalized in {"inspect screen ui", "show screen controls", "what buttons are on screen", "show ui controls", "inspect current window"}:
+            result = self.orchestrator.handle(text)
+            if result.ok:
+                controls = result.data.get("controls", [])
+                self.file_list.clear()
+                self.path_label.setText("Visible UI Controls")
+                for control in controls[:80]:
+                    name = control.get("name") or "(unnamed)"
+                    ctype = control.get("control_type") or "Control"
+                    item = QListWidgetItem(f"◈  {name}   —   {ctype}")
+                    item.setData(Qt.ItemDataRole.UserRole, name)
+                    self.file_list.addItem(item)
+                self.output.setText(f"✓ {result.message}")
+                self.workspace_status.setText("UI INSPECTED")
+            else:
+                self.output.setText(f"⚠ {result.message}")
+                self.workspace_status.setText("UI INSPECTION ERROR")
+            self.command.clear()
+            self._update_command_center(self.output.text())
+            return
 
         # v0.6 object-model intents: show structured OS information in the shell.
         if normalized in {"what apps are running", "which apps are running", "show running apps", "show running applications", "what is running"}:

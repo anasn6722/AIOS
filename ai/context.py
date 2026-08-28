@@ -37,7 +37,7 @@ class ContextEngine:
             user32.GetWindowTextW(hwnd, buffer, length + 1)
             pid = ctypes.c_ulong()
             user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-            return {"title": buffer.value or None, "pid": int(pid.value)}
+            return {"title": buffer.value or None, "pid": int(pid.value), "hwnd": int(hwnd)}
         except (AttributeError, OSError):
             return {"title": None, "pid": None}
 

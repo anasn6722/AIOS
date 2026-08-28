@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.actions import ActionRequest, ActionResult
+from core.actions import ActionRequest, ActionResult, RiskLevel
 from core.runtime import AIOSRuntime
 
 
@@ -20,6 +20,15 @@ class Orchestrator:
 
     def interpret(self, text: str) -> ActionRequest | None:
         command = " ".join(text.lower().split())
+        if command in {"inspect screen ui", "show screen controls", "what buttons are on screen", "show ui controls", "inspect current window"}:
+            return ActionRequest("inspect_ui", {}, source="ai")
+        for prefix in ("click ", "press button "):
+            if command.startswith(prefix):
+                target = text[len(prefix):].strip()
+                target = target.removesuffix(" button").strip()
+                if target:
+                    return ActionRequest("click_control", {"target": target}, risk=RiskLevel.MEDIUM, source="ai")
+
         direct_apps = {
             "open vscode": "vscode",
             "open vs code": "vscode",

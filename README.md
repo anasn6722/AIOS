@@ -69,3 +69,7 @@ Voice Input and Capture Screen are now prominent controls at the top of the AI C
 
 ## v1.2.9 voice architecture
 Voice uses faster-whisper `base.en` on CPU/int8 as the primary offline recognizer, with Vosk as a fallback. The first Whisper model load may download model files; afterward the model is cached locally under `C:\AIOS\models\whisper`.
+
+
+## v1.3.0 Screen Understanding
+The screen action now captures the desktop and produces a local semantic analysis: active window/process, visible windows, and optional OCR text. Vision remains read-only. Direct commands include "what is on my screen", "analyze my screen", and "read my screen".
