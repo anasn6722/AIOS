@@ -68,6 +68,7 @@ class AiosShell(QMainWindow):
         self.vision_engine = services.vision
         self._voice_thread: QThread | None = None
         self._voice_worker: object | None = None
+        self._pending_task_plan = None
         self.setWindowTitle("AIOS — AI-Native Desktop")
         self.resize(1520, 940)
         self.setMinimumSize(1180, 760)
@@ -595,6 +596,27 @@ class AiosShell(QMainWindow):
         if not text:
             return
 
+        # v1.5: multi-step task planning is shown before execution.
+        # Risky plans wait for the same confirmation button used elsewhere.
+        plan = self.orchestrator.make_task_plan(text)
+        if plan is not None:
+            self.orchestrator.context.record_command(text)
+            self.cc_output.setPlainText("PLAN READY\n\n" + plan.summary)
+            self.output.setText("✓ Plan created. " + ("Confirmation required." if plan.requires_confirmation else "Executing safe steps..."))
+            self.workspace_status.setText("PLAN READY")
+            if plan.requires_confirmation:
+                self._pending_task_plan = plan
+                self.confirm_button.setVisible(True)
+                self.confirm_button.setProperty("task_plan", plan)
+                self.confirm_button.setProperty("command_text", "")
+                self.confirm_button.setText("Confirm Plan")
+                self.command.clear()
+                return
+            results = self.orchestrator.execute_task_plan(plan, confirmed=False)
+            self._show_task_results(plan, results)
+            self.command.clear()
+            return
+
         normalized = " ".join(text.lower().split())
 
         # v1.3: screen-analysis queries are read-only and handled directly by
@@ -823,7 +845,30 @@ class AiosShell(QMainWindow):
         self.command.clear()
         self._update_command_center(self.output.text())
 
+    def _show_task_results(self, plan, results) -> None:
+        lines = [f"GOAL: {plan.goal}"]
+        succeeded = 0
+        for index, result in enumerate(results, 1):
+            prefix = "✓" if result.ok else "⚠"
+            lines.append(f"{prefix} Step {index}: {result.message}")
+            if result.ok:
+                succeeded += 1
+        self.cc_output.setPlainText("\n".join(lines))
+        self.output.setText(f"✓ Completed {succeeded}/{len(plan.steps)} step(s).")
+        self.workspace_status.setText("PLAN COMPLETE" if succeeded == len(plan.steps) else "PLAN STOPPED")
+        self._update_command_center(self.output.text())
+
     def confirm_command(self) -> None:
+        plan = self.confirm_button.property("task_plan")
+        if plan is not None:
+            results = self.orchestrator.execute_task_plan(plan, confirmed=True)
+            self.confirm_button.setVisible(False)
+            self.confirm_button.setText("Confirm")
+            self.confirm_button.setProperty("task_plan", None)
+            self.command.clear()
+            self._show_task_results(plan, results)
+            return
+
         text = self.confirm_button.property("command_text")
         if not text:
             return

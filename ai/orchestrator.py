@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from core.actions import ActionRequest, ActionResult, RiskLevel
 from core.runtime import AIOSRuntime
+from ai.task_planner import TaskPlan, TaskPlanner
 
 
 class Orchestrator:
@@ -17,6 +18,7 @@ class Orchestrator:
         self.llm_planner = services.llm_planner
         self.context = services.context
         self.memory = services.memory
+        self.task_planner = TaskPlanner()
 
     def interpret(self, text: str) -> ActionRequest | None:
         command = " ".join(text.lower().split())
@@ -74,6 +76,29 @@ class Orchestrator:
         if not self.policy.authorize(request, confirmed=confirmed):
             return ActionResult(False, "This action is blocked by the policy engine.")
         return self.system.execute(request)
+
+    def make_task_plan(self, text: str) -> TaskPlan | None:
+        return self.task_planner.plan(text)
+
+    def execute_task_plan(self, plan: TaskPlan, confirmed: bool = False) -> list[ActionResult]:
+        results: list[ActionResult] = []
+        for step in plan.steps:
+            request = step.request
+            if self.policy.requires_confirmation(request) and not confirmed:
+                results.append(ActionResult(
+                    False,
+                    f"Confirmation required for step {step.number}: {request.name}",
+                    {"requires_confirmation": True, "action": request.name, "step": step.number},
+                ))
+                break
+            if not self.policy.authorize(request, confirmed=confirmed):
+                results.append(ActionResult(False, f"Step {step.number} blocked by the policy engine."))
+                break
+            result = self.system.execute(request)
+            results.append(result)
+            if not result.ok:
+                break
+        return results
 
     def health(self) -> dict[str, object]:
         return self.runtime.health()

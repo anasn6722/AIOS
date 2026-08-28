@@ -73,3 +73,7 @@ Voice uses faster-whisper `base.en` on CPU/int8 as the primary offline recognize
 
 ## v1.3.0 Screen Understanding
 The screen action now captures the desktop and produces a local semantic analysis: active window/process, visible windows, and optional OCR text. Vision remains read-only. Direct commands include "what is on my screen", "analyze my screen", and "read my screen".
+
+## v1.5 — Autonomous Task Planning
+
+AIOS can now convert supported natural-language goals into multi-step plans and execute them sequentially behind the existing policy engine.

@@ -70,8 +70,17 @@ class VoiceEngine:
         "find my university documents",
     ]
 
+    # Backward-compatible public alias used by existing AIOS tests/components.
+    @property
+    def command_phrases(self) -> list[str]:
+        return list(self.COMMAND_PHRASES)
+
+    @staticmethod
+    def _normalize_command(text: str) -> str:
+        return VoiceEngine._normalize(text)
+
     def __init__(self) -> None:
-        self.sample_rate = self.SAMPLE_RATE
+        self.sample_rate = 16000
         self.channels = 1
         self.chunk = self.CHUNK
         self.input_device_index: int | None = None
@@ -256,8 +265,6 @@ class VoiceEngine:
         vosk_available = Model is not None and KaldiRecognizer is not None and self.vosk_model_path is not None
         return {
             "microphone_backend": self._backend is not None,
-            "whisper": whisper_available,
-            "whisper_model": self.WHISPER_MODEL,
             "vosk": vosk_available,
             "model_path": str(self.vosk_model_path) if self.vosk_model_path else None,
             "ready": self._backend is not None and (whisper_available or vosk_available),
@@ -266,6 +273,8 @@ class VoiceEngine:
     def diagnostics(self) -> dict[str, Any]:
         data = self.status()
         data.update({
+            "whisper": self._whisper_ready(),
+            "whisper_model": self.WHISPER_MODEL,
             "backend": self._backend,
             "input_device_index": self.input_device_index,
             "input_device_name": self.input_device_name,
@@ -293,7 +302,7 @@ class VoiceEngine:
         mean_sq = sum(int(v) * int(v) for v in samples) // len(samples)
         return int(mean_sq ** 0.5), peak
 
-    def _resample(self, pcm: bytes, source_rate: int, channels: int) -> bytes:
+    def _resample_mono(self, pcm: bytes, source_rate: int, channels: int) -> bytes:
         src = array.array("h")
         src.frombytes(pcm)
         if channels > 1:
@@ -315,6 +324,9 @@ class VoiceEngine:
             frac = pos - left
             out.append(int(src[left] * (1.0 - frac) + src[right] * frac))
         return out.tobytes()
+
+    # Backward-compatible alias.
+    _resample = _resample_mono
 
     def _record_pyaudio(self, seconds: int) -> bytes:
         if pyaudio is None:
@@ -341,7 +353,7 @@ class VoiceEngine:
                 chunks.append(stream.read(self.chunk, exception_on_overflow=False))
             raw = b"".join(chunks)
             self.last_rms, self.last_peak = self._rms_and_peak(raw)
-            return self._resample(raw, rate, 1)
+            return self._resample_mono(raw, rate, 1)
         finally:
             if stream is not None:
                 try:
@@ -360,7 +372,7 @@ class VoiceEngine:
         sd.wait()
         raw = recording.reshape(-1).tobytes()
         self.last_rms, self.last_peak = self._rms_and_peak(raw)
-        return self._resample(raw, rate, 1)
+        return self._resample_mono(raw, rate, 1)
 
     # ---------- recognition ----------
     @staticmethod
@@ -374,6 +386,8 @@ class VoiceEngine:
             "chrome browser": "chrome",
             "note pad": "notepad",
             "notepad and": "notepad",
+            "not bad": "notepad",
+            "notpad": "notepad",
             "chrome and": "chrome",
             "chromed": "chrome",
             "task manager and": "task manager",
